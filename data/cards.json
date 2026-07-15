@@ -1,6 +1,6 @@
 {
-  "version": "0.4.0 Professional",
-  "updated": "2026-07-15",
+  "version": "0.3.0",
+  "updated": "15.07.2026",
   "cards": [
     {
       "id": "R-001",
@@ -1177,70 +1177,6 @@
         "теплопотери",
         "планировку",
         "дымоход"
-      ]
-    },
-    {
-      "id": "consult",
-      "category": "Консультации",
-      "title": "Консультация",
-      "icon": "💬",
-      "keywords": [
-        "консультация"
-      ],
-      "reply": "Дать рекомендации после фото.",
-      "price": "от 0",
-      "phone": true,
-      "photos": true,
-      "flags": [],
-      "risk": "low",
-      "time": "15 мин",
-      "repairability": "-",
-      "materials": [],
-      "check": [
-        "Фото",
-        "Описание"
-      ]
-    },
-    {
-      "id": "sketch",
-      "category": "Проектирование",
-      "title": "Эскизное проектирование",
-      "icon": "📐",
-      "keywords": [
-        "эскиз"
-      ],
-      "reply": "Подготовить эскиз и обсудить.",
-      "price": "индивидуально",
-      "phone": true,
-      "photos": true,
-      "flags": [],
-      "risk": "low",
-      "time": "1 день",
-      "repairability": "-",
-      "materials": [],
-      "check": [
-        "Размеры"
-      ]
-    },
-    {
-      "id": "dismantle",
-      "category": "Разбор",
-      "title": "Разбор печи",
-      "icon": "🧱",
-      "keywords": [
-        "разбор"
-      ],
-      "reply": "Оценить безопасный демонтаж.",
-      "price": "индивидуально",
-      "phone": true,
-      "photos": true,
-      "flags": [],
-      "risk": "medium",
-      "time": "по ситуации",
-      "repairability": "-",
-      "materials": [],
-      "check": [
-        "Доступ"
       ]
     }
   ]
