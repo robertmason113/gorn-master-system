@@ -3,8 +3,8 @@
   "short_name": "GORN",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#151515",
-  "theme_color": "#151515",
+  "background_color": "#0D0D0F",
+  "theme_color": "#0D0D0F",
   "icons": [
     {
       "src": "icon-192.png",
