@@ -1,1 +1,474 @@
-const APP_VERSION='0.3.0';const state={cards:[],category:'Все',current:null,favorites:JSON.parse(localStorage.getItem('gornFavorites')||'[]'),recent:JSON.parse(localStorage.getItem('gornRecent')||'[]')};const $=s=>document.querySelector(s);async function init(){try{const r=await fetch('data/cards.json',{cache:'no-store'});const d=await r.json();state.cards=d.cards||[];renderCategories();renderHome();bindEvents();if('serviceWorker'in navigator)navigator.serviceWorker.register('service-worker.js').catch(()=>{});}catch(e){$('#list').innerHTML='<div class="empty">Не удалось загрузить базу карточек.</div>';console.error(e)}}function bindEvents(){$('#search').addEventListener('input',renderHome);$('#backBtn').addEventListener('click',goHome);$('#aboutBackBtn').addEventListener('click',goHome);$('#favoriteBtn').addEventListener('click',()=>{if(!state.current)return;toggleFavorite(state.current.id);updateFavoriteButton()});document.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.nav)))}function navigate(where){document.querySelectorAll('.bottom-nav button').forEach(b=>b.classList.toggle('active',b.dataset.nav===where));if(where==='about'){showOnly('aboutView');return}showOnly('homeView');state.category='Все';renderCategories();if(where==='favorites'){$('#search').value='';renderHome(true)}else renderHome()}function showOnly(id){['homeView','cardView','aboutView'].forEach(x=>$('#'+x).classList.toggle('hidden',x!==id));window.scrollTo({top:0,behavior:'instant'})}function save(){localStorage.setItem('gornFavorites',JSON.stringify(state.favorites));localStorage.setItem('gornRecent',JSON.stringify(state.recent))}function renderCategories(){const cats=['Все',...new Set(state.cards.map(c=>c.category))];$('#categories').innerHTML=cats.map(c=>`<button class="category-chip ${c===state.category?'active':''}" data-category="${esc(c)}">${esc(c)}</button>`).join('');document.querySelectorAll('.category-chip').forEach(b=>b.onclick=()=>{state.category=b.dataset.category;renderCategories();renderHome()})}function filtered(favOnly=false){const q=$('#search').value.trim().toLowerCase();return state.cards.filter(c=>{const cat=state.category==='Все'||c.category===state.category;const fav=!favOnly||state.favorites.includes(c.id);const text=[c.title,c.category,...(c.keywords||[]),...(c.reply||[]),...(c.price||[]),...(c.phone||[])].join(' ').toLowerCase();return cat&&fav&&(!q||text.includes(q))})}function renderHome(favOnly=false){const list=filtered(favOnly);renderQuick();$('#countBadge').textContent=`(${list.length})`;$('#list').innerHTML=list.map(listCard).join('');$('#empty').classList.toggle('hidden',list.length>0);document.querySelectorAll('[data-open-card]').forEach(e=>e.onclick=()=>openCard(e.dataset.openCard));document.querySelectorAll('[data-favorite]').forEach(b=>b.onclick=e=>{e.stopPropagation();toggleFavorite(b.dataset.favorite)})}function renderQuick(){const fav=state.favorites.map(id=>state.cards.find(c=>c.id===id)).filter(Boolean),rec=state.recent.map(id=>state.cards.find(c=>c.id===id)).filter(Boolean),src=fav.length?fav:(rec.length?rec:state.cards.slice(0,4));$('#quick').innerHTML=src.slice(0,4).map(c=>`<article class="quick-card" data-open-card="${c.id}"><div class="quick-icon">${c.icon}</div><div class="quick-title">${esc(c.title)}</div><div class="quick-category">${esc(c.category)}</div></article>`).join('')}function listCard(c){const f=state.favorites.includes(c.id);return `<article class="list-card" data-open-card="${c.id}"><div class="list-left"><div class="list-icon">${c.icon}</div><div><div class="list-title">${esc(c.title)}</div><div class="list-category">${esc(c.category)}</div></div></div><button class="star-btn ${f?'on':''}" data-favorite="${c.id}">${f?'★':'☆'}</button></article>`}function openCard(id){const c=state.cards.find(x=>x.id===id);if(!c)return;state.current=c;state.recent=[id,...state.recent.filter(x=>x!==id)].slice(0,8);save();showOnly('cardView');updateFavoriteButton();const r=c.risk||{level:'yellow',text:'Нужна оценка'};$('#cardContent').innerHTML=`<h2 class="detail-title">${c.icon} ${esc(c.title)}</h2><div class="risk ${r.level}">${r.level==='red'?'🔴':r.level==='green'?'🟢':'🟡'} ${esc(r.text)}</div><div class="meta-grid"><div class="meta-card"><strong>⏱ Обычно занимает</strong>${esc(c.time||'Нужно уточнить')}</div><div class="meta-card"><strong>🛠 Ремонтопригодность</strong>${esc(c.repairability||'Нужно смотреть')}</div></div>${copySection('📩 Готовый ответ клиенту',c.reply)}${copySection('💰 Как назвать стоимость',c.price)}${listSection('☎️ Что спросить',c.phone)}${listSection('📷 Какие фото попросить',c.photos)}${listSection('🔍 Что проверить',c.check)}${listSection('🧰 Что взять / материалы',c.materials)}${listSection('⚠️ Красные флаги',c.flags,'flags')}`;document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>copyText(b.dataset.copy,b))}function copySection(t,items=[]){if(!items.length)return'';return `<section class="block"><h3>${t}</h3>${items.map((x,i)=>{const id='copy-'+state.current.id+'-'+i+'-'+t.length;return `<div class="reply" id="${id}">${esc(x)}</div><button class="copy-btn" data-copy="${id}">📋 Копировать</button>`}).join('')}</section>`}function listSection(t,items=[],cl=''){if(!items||!items.length)return'';return `<section class="block"><h3>${t}</h3><ul class="${cl}">${items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`}function goHome(){showOnly('homeView');renderHome()}function toggleFavorite(id){state.favorites=state.favorites.includes(id)?state.favorites.filter(x=>x!==id):[id,...state.favorites];save();renderHome()}function updateFavoriteButton(){$('#favoriteBtn').textContent=state.current&&state.favorites.includes(state.current.id)?'★ Закреплено':'☆ Закрепить'}async function copyText(id,b){const text=document.getElementById(id).innerText;try{await navigator.clipboard.writeText(text)}catch{const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');t.remove()}b.classList.add('done');b.textContent='✓ Скопировано';const toast=$('#toast');toast.classList.add('show');setTimeout(()=>{b.classList.remove('done');b.textContent='📋 Копировать';toast.classList.remove('show')},1100)}function esc(v){return String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;')}init();
+const APP_META = {
+  version: '0.3.1',
+  status: 'Stable',
+  updated: '16.07.2026',
+};
+
+const ARRAY_FIELDS = [
+  'keywords',
+  'reply',
+  'price',
+  'phone',
+  'photos',
+  'check',
+  'materials',
+  'flags',
+];
+
+const state = {
+  cards: [],
+  category: 'Все',
+  current: null,
+  favorites: readStoredArray('gornFavorites'),
+  recent: readStoredArray('gornRecent'),
+};
+
+const $ = (selector) => document.querySelector(selector);
+
+function readStoredArray(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || '[]');
+    return Array.isArray(value) ? value.map(String) : [];
+  } catch (error) {
+    console.warn(`GORN: хранилище ${key} было сброшено`, error);
+    localStorage.removeItem(key);
+    return [];
+  }
+}
+
+function toText(value, fallback = '') {
+  if (value === null || value === undefined || typeof value === 'boolean') {
+    return fallback;
+  }
+  const text = String(value).trim();
+  return text || fallback;
+}
+
+function toArray(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => toText(item)).filter(Boolean);
+  }
+  if (value === null || value === undefined || typeof value === 'boolean') {
+    return [];
+  }
+  const text = toText(value);
+  return text ? [text] : [];
+}
+
+function normalizeRisk(value) {
+  const aliases = {
+    low: 'green',
+    medium: 'yellow',
+    high: 'red',
+  };
+
+  if (typeof value === 'string') {
+    const level = aliases[value] || value;
+    return {
+      level: ['green', 'yellow', 'red'].includes(level) ? level : 'yellow',
+      text: 'Нужна оценка специалиста',
+    };
+  }
+
+  if (!value || typeof value !== 'object') {
+    return { level: 'yellow', text: 'Нужна оценка специалиста' };
+  }
+
+  const rawLevel = toText(value.level, 'yellow');
+  const level = aliases[rawLevel] || rawLevel;
+  return {
+    level: ['green', 'yellow', 'red'].includes(level) ? level : 'yellow',
+    text: toText(value.text, 'Нужна оценка специалиста'),
+  };
+}
+
+function normalizeCard(rawCard, index) {
+  const source = rawCard && typeof rawCard === 'object' ? rawCard : {};
+  const card = {
+    ...source,
+    id: toText(source.id, `CARD-${index + 1}`),
+    category: toText(source.category, 'Универсальные'),
+    title: toText(source.title, `Карточка ${index + 1}`),
+    icon: toText(source.icon, '🔥'),
+    time: toText(source.time, 'Нужно уточнить'),
+    repairability: toText(source.repairability, 'Нужно смотреть'),
+    risk: normalizeRisk(source.risk),
+  };
+
+  ARRAY_FIELDS.forEach((field) => {
+    card[field] = toArray(source[field]);
+  });
+
+  return card;
+}
+
+function prepareCards(rawCards) {
+  if (!Array.isArray(rawCards)) {
+    throw new Error('Поле cards отсутствует или имеет неверный формат');
+  }
+
+  const usedIds = new Set();
+  const cards = [];
+
+  rawCards.forEach((rawCard, index) => {
+    const card = normalizeCard(rawCard, index);
+    if (usedIds.has(card.id)) {
+      console.warn(`GORN: пропущена карточка с повторным ID ${card.id}`);
+      return;
+    }
+    usedIds.add(card.id);
+    cards.push(card);
+  });
+
+  if (!cards.length) {
+    throw new Error('База карточек пуста');
+  }
+
+  return cards;
+}
+
+async function init() {
+  renderVersion();
+  bindEvents();
+  registerServiceWorker();
+
+  try {
+    const response = await fetch(`data/cards.json?v=${APP_META.version}`, { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`Ошибка загрузки базы: HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    state.cards = prepareCards(data.cards);
+
+    if (data.version && String(data.version) !== APP_META.version) {
+      console.warn(
+        `GORN: версия базы ${data.version} не совпадает с версией приложения ${APP_META.version}`,
+      );
+    }
+
+    state.favorites = state.favorites.filter((id) => state.cards.some((card) => card.id === id));
+    state.recent = state.recent.filter((id) => state.cards.some((card) => card.id === id));
+    save();
+
+    renderCategories();
+    renderHome();
+  } catch (error) {
+    showLoadError(error);
+  }
+}
+
+function renderVersion() {
+  const line = `v${APP_META.version} • ${APP_META.status} • ${APP_META.updated}`;
+  const versionLine = $('#versionLine');
+  const aboutVersion = $('#aboutVersion');
+  const aboutUpdated = $('#aboutUpdated');
+
+  if (versionLine) versionLine.textContent = line;
+  if (aboutVersion) aboutVersion.textContent = `Версия ${APP_META.version} ${APP_META.status}`;
+  if (aboutUpdated) aboutUpdated.textContent = `Обновлено: ${APP_META.updated}`;
+}
+
+function bindEvents() {
+  $('#search')?.addEventListener('input', () => renderHome());
+  $('#backBtn')?.addEventListener('click', goHome);
+  $('#aboutBackBtn')?.addEventListener('click', goHome);
+  $('#favoriteBtn')?.addEventListener('click', () => {
+    if (!state.current) return;
+    toggleFavorite(state.current.id);
+    updateFavoriteButton();
+  });
+
+  document.querySelectorAll('[data-nav]').forEach((button) => {
+    button.addEventListener('click', () => navigate(button.dataset.nav));
+  });
+}
+
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  let refreshing = false;
+
+  navigator.serviceWorker
+    .register('service-worker.js', { updateViaCache: 'none' })
+    .then((registration) => registration.update())
+    .catch((error) => console.warn('GORN: Service Worker не зарегистрирован', error));
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
+}
+
+function showLoadError(error) {
+  console.error('GORN: не удалось загрузить базу карточек', error);
+  $('#categories').innerHTML = '<button class="category-chip active">Все</button>';
+  $('#quick').innerHTML = '';
+  $('#countBadge').textContent = '(0)';
+  $('#empty').classList.add('hidden');
+  $('#list').innerHTML = `
+    <div class="empty">
+      Не удалось загрузить базу карточек.<br>
+      <button id="retryBtn" class="secondary-btn" type="button">Обновить страницу</button>
+    </div>`;
+  $('#retryBtn')?.addEventListener('click', () => window.location.reload());
+}
+
+function navigate(where) {
+  document.querySelectorAll('.bottom-nav button').forEach((button) => {
+    button.classList.toggle('active', button.dataset.nav === where);
+  });
+
+  if (where === 'about') {
+    showOnly('aboutView');
+    return;
+  }
+
+  showOnly('homeView');
+  state.category = 'Все';
+  renderCategories();
+
+  if (where === 'favorites') {
+    $('#search').value = '';
+    renderHome(true);
+  } else {
+    renderHome();
+  }
+}
+
+function showOnly(id) {
+  ['homeView', 'cardView', 'aboutView'].forEach((viewId) => {
+    $(`#${viewId}`).classList.toggle('hidden', viewId !== id);
+  });
+  window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+function save() {
+  try {
+    localStorage.setItem('gornFavorites', JSON.stringify(state.favorites));
+    localStorage.setItem('gornRecent', JSON.stringify(state.recent));
+  } catch (error) {
+    console.warn('GORN: не удалось сохранить локальные данные', error);
+  }
+}
+
+function renderCategories() {
+  const categories = ['Все', ...new Set(state.cards.map((card) => card.category))];
+  $('#categories').innerHTML = categories
+    .map(
+      (category) =>
+        `<button class="category-chip ${category === state.category ? 'active' : ''}" data-category="${esc(category)}">${esc(category)}</button>`,
+    )
+    .join('');
+
+  document.querySelectorAll('.category-chip[data-category]').forEach((button) => {
+    button.onclick = () => {
+      state.category = button.dataset.category;
+      renderCategories();
+      renderHome();
+    };
+  });
+}
+
+function filtered(favoritesOnly = false) {
+  const query = $('#search').value.trim().toLowerCase();
+
+  return state.cards.filter((card) => {
+    const matchesCategory = state.category === 'Все' || card.category === state.category;
+    const matchesFavorite = !favoritesOnly || state.favorites.includes(card.id);
+    const searchableText = [
+      card.title,
+      card.category,
+      ...card.keywords,
+      ...card.reply,
+      ...card.price,
+      ...card.phone,
+    ]
+      .join(' ')
+      .toLowerCase();
+
+    return matchesCategory && matchesFavorite && (!query || searchableText.includes(query));
+  });
+}
+
+function renderHome(favoritesOnly = false) {
+  const list = filtered(favoritesOnly);
+  renderQuick();
+  $('#countBadge').textContent = `(${list.length})`;
+  $('#list').innerHTML = list.map(listCard).join('');
+  $('#empty').classList.toggle('hidden', list.length > 0);
+
+  document.querySelectorAll('[data-open-card]').forEach((element) => {
+    element.onclick = () => openCard(element.dataset.openCard);
+  });
+
+  document.querySelectorAll('[data-favorite]').forEach((button) => {
+    button.onclick = (event) => {
+      event.stopPropagation();
+      toggleFavorite(button.dataset.favorite);
+    };
+  });
+}
+
+function renderQuick() {
+  const favorites = state.favorites
+    .map((id) => state.cards.find((card) => card.id === id))
+    .filter(Boolean);
+  const recent = state.recent
+    .map((id) => state.cards.find((card) => card.id === id))
+    .filter(Boolean);
+  const source = favorites.length
+    ? favorites
+    : recent.length
+      ? recent
+      : state.cards.slice(0, 4);
+
+  $('#quick').innerHTML = source
+    .slice(0, 4)
+    .map(
+      (card) => `
+        <article class="quick-card" data-open-card="${esc(card.id)}">
+          <div class="quick-icon">${esc(card.icon)}</div>
+          <div class="quick-title">${esc(card.title)}</div>
+          <div class="quick-category">${esc(card.category)}</div>
+        </article>`,
+    )
+    .join('');
+}
+
+function listCard(card) {
+  const isFavorite = state.favorites.includes(card.id);
+  return `
+    <article class="list-card" data-open-card="${esc(card.id)}">
+      <div class="list-left">
+        <div class="list-icon">${esc(card.icon)}</div>
+        <div>
+          <div class="list-title">${esc(card.title)}</div>
+          <div class="list-category">${esc(card.category)}</div>
+        </div>
+      </div>
+      <button class="star-btn ${isFavorite ? 'on' : ''}" data-favorite="${esc(card.id)}" type="button">${isFavorite ? '★' : '☆'}</button>
+    </article>`;
+}
+
+function openCard(id) {
+  const card = state.cards.find((item) => item.id === id);
+  if (!card) return;
+
+  state.current = card;
+  state.recent = [id, ...state.recent.filter((item) => item !== id)].slice(0, 8);
+  save();
+  showOnly('cardView');
+  updateFavoriteButton();
+
+  const riskIcon = card.risk.level === 'red' ? '🔴' : card.risk.level === 'green' ? '🟢' : '🟡';
+
+  $('#cardContent').innerHTML = `
+    <h2 class="detail-title">${esc(card.icon)} ${esc(card.title)}</h2>
+    <div class="risk ${esc(card.risk.level)}">${riskIcon} ${esc(card.risk.text)}</div>
+    <div class="meta-grid">
+      <div class="meta-card"><strong>⏱ Обычно занимает</strong>${esc(card.time)}</div>
+      <div class="meta-card"><strong>🛠 Ремонтопригодность</strong>${esc(card.repairability)}</div>
+    </div>
+    ${copySection('📩 Готовый ответ клиенту', card.reply)}
+    ${copySection('💰 Как назвать стоимость', card.price)}
+    ${listSection('☎️ Что спросить', card.phone)}
+    ${listSection('📷 Какие фото попросить', card.photos)}
+    ${listSection('🔍 Что проверить', card.check)}
+    ${listSection('🧰 Что взять / материалы', card.materials)}
+    ${listSection('⚠️ Красные флаги', card.flags, 'flags')}`;
+
+  document.querySelectorAll('[data-copy]').forEach((button) => {
+    button.onclick = () => copyText(button.dataset.copy, button);
+  });
+}
+
+function copySection(title, items = []) {
+  const safeItems = toArray(items);
+  if (!safeItems.length) return '';
+
+  return `
+    <section class="block">
+      <h3>${title}</h3>
+      ${safeItems
+        .map((item, index) => {
+          const id = `copy-${state.current.id}-${index}-${title.length}`;
+          return `<div class="reply" id="${esc(id)}">${esc(item)}</div><button class="copy-btn" data-copy="${esc(id)}" type="button">📋 Копировать</button>`;
+        })
+        .join('')}
+    </section>`;
+}
+
+function listSection(title, items = [], className = '') {
+  const safeItems = toArray(items);
+  if (!safeItems.length) return '';
+
+  return `
+    <section class="block">
+      <h3>${title}</h3>
+      <ul class="${esc(className)}">${safeItems.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>
+    </section>`;
+}
+
+function goHome() {
+  showOnly('homeView');
+  renderHome();
+}
+
+function toggleFavorite(id) {
+  state.favorites = state.favorites.includes(id)
+    ? state.favorites.filter((item) => item !== id)
+    : [id, ...state.favorites];
+  save();
+  renderHome();
+}
+
+function updateFavoriteButton() {
+  $('#favoriteBtn').textContent =
+    state.current && state.favorites.includes(state.current.id) ? '★ Закреплено' : '☆ Закрепить';
+}
+
+async function copyText(id, button) {
+  const source = document.getElementById(id);
+  if (!source) return;
+  const text = source.innerText;
+
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('Clipboard API недоступен');
+    await navigator.clipboard.writeText(text);
+  } catch (error) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    textarea.remove();
+  }
+
+  button.classList.add('done');
+  button.textContent = '✓ Скопировано';
+  const toast = $('#toast');
+  toast.classList.add('show');
+
+  setTimeout(() => {
+    button.classList.remove('done');
+    button.textContent = '📋 Копировать';
+    toast.classList.remove('show');
+  }, 1100);
+}
+
+function esc(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+init();
