@@ -1,7 +1,17 @@
 const APP_META = {
-  version: '0.3.4',
+  version: '0.3.5',
   status: 'Stable',
   updated: '16.07.2026',
+};
+
+const CLIENT_STATUSES = ['Новый', 'Связаться', 'Выезд назначен', 'В работе', 'Завершён', 'Отказ'];
+const WORK_STATUSES = ['Планируется', 'В работе', 'Завершено', 'Отменено'];
+
+const stateDefaults = {
+  clientStatusFilter: 'Все',
+  clientSort: 'updated',
+  workStatusFilter: 'Все',
+  workSort: 'dateDesc',
 };
 
 const ARRAY_FIELDS = [
@@ -22,6 +32,10 @@ const state = {
   mode: 'home',
   cardSearch: '',
   clientSearch: '',
+  clientStatusFilter: stateDefaults.clientStatusFilter,
+  clientSort: stateDefaults.clientSort,
+  workStatusFilter: stateDefaults.workStatusFilter,
+  workSort: stateDefaults.workSort,
   editingClientId: null,
   editingWorkId: null,
   favorites: readStoredArray('gornFavorites'),
@@ -62,7 +76,6 @@ function localDateISO(date = new Date()) {
 function normalizeWork(rawWork, index = 0) {
   const source = rawWork && typeof rawWork === 'object' ? rawWork : {};
   const createdAt = toText(source.createdAt, new Date().toISOString());
-  const allowedStatuses = ['Планируется', 'В работе', 'Завершено', 'Отменено'];
   const rawStatus = toText(source.status, 'Планируется');
 
   return {
@@ -70,7 +83,7 @@ function normalizeWork(rawWork, index = 0) {
     title: toText(source.title, 'Работа без названия'),
     date: toText(source.date, localDateISO()),
     address: toText(source.address),
-    status: allowedStatuses.includes(rawStatus) ? rawStatus : 'Планируется',
+    status: WORK_STATUSES.includes(rawStatus) ? rawStatus : 'Планируется',
     amount: toText(source.amount),
     notes: toText(source.notes),
     createdAt,
@@ -89,6 +102,7 @@ function normalizeClient(rawClient, index = 0) {
     address: toText(source.address),
     notes: toText(source.notes),
     date: toText(source.date, localDateISO()),
+    status: CLIENT_STATUSES.includes(toText(source.status)) ? toText(source.status) : 'Новый',
     works: rawWorks.map((work, workIndex) => normalizeWork(work, workIndex)),
     createdAt,
     updatedAt: toText(source.updatedAt, createdAt),
@@ -264,6 +278,29 @@ function bindEvents() {
   $('#clientsShortcutBtn')?.addEventListener('click', () => navigate('clients'));
 
   $('#newClientBtn')?.addEventListener('click', () => openClientForm());
+
+  document.querySelectorAll('[data-client-filter]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.clientStatusFilter = button.dataset.clientFilter || 'Все';
+      renderClients();
+    });
+  });
+  $('#clientSort')?.addEventListener('change', (event) => {
+    state.clientSort = event.target.value || stateDefaults.clientSort;
+    renderClients();
+  });
+
+  document.querySelectorAll('[data-work-filter]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.workStatusFilter = button.dataset.workFilter || 'Все';
+      renderWorkHistory();
+    });
+  });
+  $('#workSort')?.addEventListener('change', (event) => {
+    state.workSort = event.target.value || stateDefaults.workSort;
+    renderWorkHistory();
+  });
+
   $('#closeClientFormBtn')?.addEventListener('click', closeClientForm);
   $('#clientForm')?.addEventListener('submit', saveClientFromForm);
   $('#deleteClientBtn')?.addEventListener('click', deleteEditingClient);
@@ -420,25 +457,54 @@ function save() {
 function renderClients() {
   const query = normalizeSearchText(state.clientSearch);
   const tokens = query.split(' ').filter(Boolean);
-  const clients = [...state.clients]
-    .filter((client) => {
-      if (!tokens.length) return true;
-      const worksText = (client.works || [])
-        .flatMap((work) => [work.title, work.date, work.address, work.status, work.amount, work.notes])
-        .join(' ');
-      const text = [client.name, client.phone, client.address, client.notes, client.date, worksText].join(' ');
-      return fieldContainsTokens(text, tokens);
-    })
-    .sort(
-      (a, b) =>
-        String(b.date).localeCompare(String(a.date)) ||
-        String(b.updatedAt).localeCompare(String(a.updatedAt)),
-    );
+  const totalClients = state.clients.length;
+  let clients = [...state.clients].filter((client) => {
+    const statusMatches =
+      state.clientStatusFilter === 'Все' || client.status === state.clientStatusFilter;
+    if (!statusMatches) return false;
+    if (!tokens.length) return true;
 
-  $('#clientsCountBadge').textContent = `(${clients.length})`;
+    const worksText = (client.works || [])
+      .flatMap((work) => [work.title, work.date, work.address, work.status, work.amount, work.notes])
+      .join(' ');
+    const text = [
+      client.name,
+      client.phone,
+      client.address,
+      client.notes,
+      client.date,
+      client.status,
+      worksText,
+    ].join(' ');
+    return fieldContainsTokens(text, tokens);
+  });
+
+  const sorters = {
+    updated: (a, b) =>
+      String(b.updatedAt).localeCompare(String(a.updatedAt)) ||
+      String(b.date).localeCompare(String(a.date)),
+    dateDesc: (a, b) =>
+      String(b.date).localeCompare(String(a.date)) ||
+      String(b.updatedAt).localeCompare(String(a.updatedAt)),
+    nameAsc: (a, b) => String(a.name).localeCompare(String(b.name), 'ru'),
+  };
+  clients.sort(sorters[state.clientSort] || sorters.updated);
+
+  const isFiltered = Boolean(query) || state.clientStatusFilter !== 'Все';
+  $('#clientsCountBadge').textContent = isFiltered
+    ? `(${clients.length} из ${totalClients})`
+    : `(${totalClients})`;
   $('#clientsList').innerHTML = clients.map(clientCard).join('');
-  $('#clientsEmpty').textContent = query ? 'Ничего не найдено' : 'Клиентов пока нет';
+  $('#clientsEmpty').textContent = query || state.clientStatusFilter !== 'Все'
+    ? 'Ничего не найдено'
+    : 'Клиентов пока нет';
   $('#clientsEmpty').classList.toggle('hidden', clients.length > 0);
+
+  document.querySelectorAll('[data-client-filter]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.clientFilter === state.clientStatusFilter);
+  });
+  const clientSort = $('#clientSort');
+  if (clientSort && clientSort.value !== state.clientSort) clientSort.value = state.clientSort;
 
   document.querySelectorAll('[data-client-id]').forEach((element) => {
     element.onclick = () => openClientForm(element.dataset.clientId);
@@ -452,6 +518,7 @@ function renderClients() {
 function clientCard(client) {
   const phoneHref = client.phone.replace(/[^\d+]/g, '');
   const works = Array.isArray(client.works) ? client.works : [];
+  const statusClass = clientStatusClass(client.status);
   const latestWork = [...works].sort(
     (a, b) => String(b.date).localeCompare(String(a.date)) || String(b.updatedAt).localeCompare(String(a.updatedAt)),
   )[0];
@@ -470,7 +537,10 @@ function clientCard(client) {
       <div class="client-card-main">
         <div class="client-avatar">👤</div>
         <div class="client-card-content">
-          <div class="client-name">${esc(client.name)}</div>
+          <div class="client-name-row">
+            <div class="client-name">${esc(client.name)}</div>
+            <span class="client-status ${esc(statusClass)}">${esc(client.status)}</span>
+          </div>
           <div class="client-details">${details.join('<span>•</span>')}</div>
           ${preview ? `<div class="client-notes-preview">${esc(preview)}</div>` : ''}
         </div>
@@ -492,11 +562,13 @@ function openClientForm(clientId = null) {
   $('#clientPhone').value = client?.phone || '';
   $('#clientAddress').value = client?.address || '';
   $('#clientDate').value = client?.date || localDateISO();
+  $('#clientStatus').value = client?.status || 'Новый';
   $('#clientNotes').value = client?.notes || '';
   $('#deleteClientBtn').classList.toggle('hidden', !client);
   $('#clientFormWrap').classList.remove('hidden');
   $('#clientsList').classList.add('hidden');
   $('#clientsEmpty').classList.add('hidden');
+  $('#clientsTools')?.classList.add('hidden');
   $('#newClientBtn').classList.add('hidden');
   closeWorkForm();
   renderWorkHistory(client);
@@ -513,6 +585,7 @@ function closeClientForm() {
   $('#workHistoryWrap')?.classList.add('hidden');
   $('#workFormWrap')?.classList.add('hidden');
   $('#clientsList')?.classList.remove('hidden');
+  $('#clientsTools')?.classList.remove('hidden');
   $('#newClientBtn')?.classList.remove('hidden');
   if (state.mode === 'clients') renderClients();
 }
@@ -538,6 +611,7 @@ function saveClientFromForm(event) {
       address: $('#clientAddress').value,
       date: $('#clientDate').value || localDateISO(),
       notes: $('#clientNotes').value,
+      status: $('#clientStatus').value,
       works: existing?.works || [],
       createdAt: existing?.createdAt || now,
       updatedAt: now,
@@ -581,13 +655,37 @@ function renderWorkHistory(client = currentEditingClient()) {
   }
 
   wrap.classList.remove('hidden');
-  const works = [...(client.works || [])].sort(
-    (a, b) => String(b.date).localeCompare(String(a.date)) || String(b.updatedAt).localeCompare(String(a.updatedAt)),
+  const allWorks = [...(client.works || [])];
+  let works = allWorks.filter(
+    (work) => state.workStatusFilter === 'Все' || work.status === state.workStatusFilter,
   );
 
-  $('#workCountBadge').textContent = `(${works.length})`;
+  const sorters = {
+    dateDesc: (a, b) =>
+      String(b.date).localeCompare(String(a.date)) ||
+      String(b.updatedAt).localeCompare(String(a.updatedAt)),
+    dateAsc: (a, b) =>
+      String(a.date).localeCompare(String(b.date)) ||
+      String(a.updatedAt).localeCompare(String(b.updatedAt)),
+    updated: (a, b) =>
+      String(b.updatedAt).localeCompare(String(a.updatedAt)) ||
+      String(b.date).localeCompare(String(a.date)),
+  };
+  works.sort(sorters[state.workSort] || sorters.dateDesc);
+
+  const isFiltered = state.workStatusFilter !== 'Все';
+  $('#workCountBadge').textContent = isFiltered
+    ? `(${works.length} из ${allWorks.length})`
+    : `(${allWorks.length})`;
   $('#workList').innerHTML = works.map(workCard).join('');
+  $('#workEmpty').textContent = isFiltered ? 'Работ с таким статусом нет' : 'История работ пока пуста';
   $('#workEmpty').classList.toggle('hidden', works.length > 0);
+
+  document.querySelectorAll('[data-work-filter]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.workFilter === state.workStatusFilter);
+  });
+  const workSort = $('#workSort');
+  if (workSort && workSort.value !== state.workSort) workSort.value = state.workSort;
 
   document.querySelectorAll('[data-work-id]').forEach((element) => {
     element.onclick = () => openWorkForm(element.dataset.workId);
@@ -638,6 +736,7 @@ function openWorkForm(workId = null) {
   $('#workFormWrap').classList.remove('hidden');
   $('#workList').classList.add('hidden');
   $('#workEmpty').classList.add('hidden');
+  $('#workTools')?.classList.add('hidden');
   $('#addWorkBtn').classList.add('hidden');
   $('#workTitle').focus();
   $('#workFormWrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -648,6 +747,7 @@ function closeWorkForm() {
   $('#workForm')?.reset();
   $('#workFormWrap')?.classList.add('hidden');
   $('#workList')?.classList.remove('hidden');
+  $('#workTools')?.classList.remove('hidden');
   $('#addWorkBtn')?.classList.remove('hidden');
   const client = currentEditingClient();
   if (client) renderWorkHistory(client);
@@ -722,6 +822,17 @@ function deleteEditingWork() {
 function createWorkId() {
   if (globalThis.crypto?.randomUUID) return `WORK-${globalThis.crypto.randomUUID()}`;
   return `WORK-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function clientStatusClass(status) {
+  return {
+    'Новый': 'new',
+    'Связаться': 'contact',
+    'Выезд назначен': 'visit',
+    'В работе': 'progress',
+    'Завершён': 'done',
+    'Отказ': 'cancelled',
+  }[status] || 'new';
 }
 
 function workCountLabel(count) {
