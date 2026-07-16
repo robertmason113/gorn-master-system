@@ -1,5 +1,5 @@
 const APP_META = {
-  version: '0.3.6',
+  version: '0.3.7',
   status: 'Stable',
   updated: '16.07.2026',
 };
@@ -36,6 +36,7 @@ const state = {
   mode: 'home',
   cardSearch: '',
   clientSearch: '',
+  planSearch: '',
   clientStatusFilter: stateDefaults.clientStatusFilter,
   clientSort: stateDefaults.clientSort,
   workStatusFilter: stateDefaults.workStatusFilter,
@@ -257,6 +258,12 @@ function bindEvents() {
       return;
     }
 
+    if (state.mode === 'plan') {
+      state.planSearch = search?.value || '';
+      renderPlan();
+      return;
+    }
+
     if (state.mode === 'home' || state.mode === 'favorites') {
       state.cardSearch = search?.value || '';
       renderHome();
@@ -373,6 +380,11 @@ function navigate(where, pushHistory = true) {
     return;
   }
 
+  if (where === 'plan') {
+    showPlanView(pushHistory);
+    return;
+  }
+
   const mode = where === 'favorites' ? 'favorites' : 'home';
   showListView(mode, pushHistory);
 }
@@ -409,15 +421,39 @@ function showClientsView(pushHistory = false) {
   }
 }
 
+function showPlanView(pushHistory = false) {
+  state.mode = 'plan';
+  state.current = null;
+  state.editingClientId = null;
+  state.editingWorkId = null;
+  setActiveNav('plan');
+  setSearchContext('plan');
+  showOnly('planView');
+  renderPlan();
+
+  if (pushHistory) {
+    history.pushState({ view: 'plan' }, '', window.location.href);
+  }
+}
+
 function setSearchContext(context) {
   const search = $('#search');
   if (!search) return;
 
-  const isClients = context === 'clients';
-  search.value = isClients ? state.clientSearch : state.cardSearch;
-  search.placeholder = isClients
-    ? 'Поиск клиентов: имя, телефон, адрес...'
-    : 'Поиск: дымит, кирпич, чистка...';
+  if (context === 'clients') {
+    search.value = state.clientSearch;
+    search.placeholder = 'Поиск клиентов: имя, телефон, адрес...';
+    return;
+  }
+
+  if (context === 'plan') {
+    search.value = state.planSearch;
+    search.placeholder = 'Поиск в плане: клиент, адрес, работа...';
+    return;
+  }
+
+  search.value = state.cardSearch;
+  search.placeholder = 'Поиск: дымит, кирпич, чистка...';
 }
 
 function setActiveNav(where) {
@@ -444,11 +480,16 @@ function restoreHistoryView(historyState) {
     return;
   }
 
+  if (view === 'plan') {
+    showPlanView(false);
+    return;
+  }
+
   showListView(view === 'favorites' ? 'favorites' : 'home', false);
 }
 
 function showOnly(id) {
-  ['homeView', 'cardView', 'clientsView', 'aboutView'].forEach((viewId) => {
+  ['homeView', 'cardView', 'planView', 'clientsView', 'aboutView'].forEach((viewId) => {
     $(`#${viewId}`).classList.toggle('hidden', viewId !== id);
   });
   window.scrollTo({ top: 0, behavior: 'auto' });
@@ -666,6 +707,171 @@ function renderBackupInfo() {
   if (undoButton) {
     undoButton.classList.toggle('hidden', !readUndoImportBackup());
   }
+}
+
+
+
+function parseAmountNumber(value) {
+  const digits = toText(value).replace(/[^\d]/g, '');
+  if (!digits) return 0;
+  const amount = Number(digits);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function formatRubles(value) {
+  const amount = Number(value) || 0;
+  return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(amount)} ₽`;
+}
+
+function collectPlanEntries() {
+  return state.clients.flatMap((client) =>
+    (client.works || []).map((work) => ({
+      clientId: client.id,
+      clientName: client.name,
+      clientPhone: client.phone,
+      clientAddress: client.address,
+      clientStatus: client.status,
+      work,
+    })),
+  );
+}
+
+function isActivePlanWork(work) {
+  return work.status === 'Планируется' || work.status === 'В работе';
+}
+
+function renderPlan() {
+  const today = localDateISO();
+  const allEntries = collectPlanEntries();
+  const query = normalizeSearchText(state.planSearch);
+  const tokens = query.split(' ').filter(Boolean);
+
+  const visibleEntries = allEntries.filter((entry) => {
+    if (!tokens.length) return true;
+    const text = [
+      entry.clientName,
+      entry.clientPhone,
+      entry.clientAddress,
+      entry.clientStatus,
+      entry.work.title,
+      entry.work.date,
+      entry.work.address,
+      entry.work.status,
+      entry.work.amount,
+      entry.work.notes,
+    ].join(' ');
+    return fieldContainsTokens(text, tokens);
+  });
+
+  const todayEntries = visibleEntries
+    .filter((entry) => isActivePlanWork(entry.work) && entry.work.date === today)
+    .sort((a, b) => String(b.work.updatedAt).localeCompare(String(a.work.updatedAt)));
+
+  const overdueEntries = visibleEntries
+    .filter((entry) => isActivePlanWork(entry.work) && entry.work.date < today)
+    .sort((a, b) =>
+      String(a.work.date).localeCompare(String(b.work.date)) ||
+      String(b.work.updatedAt).localeCompare(String(a.work.updatedAt)),
+    );
+
+  const upcomingEntries = visibleEntries
+    .filter((entry) => isActivePlanWork(entry.work) && entry.work.date > today)
+    .sort((a, b) =>
+      String(a.work.date).localeCompare(String(b.work.date)) ||
+      String(b.work.updatedAt).localeCompare(String(a.work.updatedAt)),
+    );
+
+  const plannedAmount = allEntries
+    .filter((entry) => entry.work.status === 'Планируется')
+    .reduce((total, entry) => total + parseAmountNumber(entry.work.amount), 0);
+  const completedAmount = allEntries
+    .filter((entry) => entry.work.status === 'Завершено')
+    .reduce((total, entry) => total + parseAmountNumber(entry.work.amount), 0);
+  const allTodayCount = allEntries.filter(
+    (entry) => isActivePlanWork(entry.work) && entry.work.date === today,
+  ).length;
+  const allOverdueCount = allEntries.filter(
+    (entry) => isActivePlanWork(entry.work) && entry.work.date < today,
+  ).length;
+
+  $('#planTodayCount').textContent = String(allTodayCount);
+  $('#planOverdueCount').textContent = String(allOverdueCount);
+  $('#planPlannedAmount').textContent = formatRubles(plannedAmount);
+  $('#planCompletedAmount').textContent = formatRubles(completedAmount);
+
+  renderPlanSection('Today', todayEntries, tokens.length > 0);
+  renderPlanSection('Overdue', overdueEntries, tokens.length > 0);
+  renderPlanSection('Upcoming', upcomingEntries, tokens.length > 0);
+
+  document.querySelectorAll('[data-plan-client-id]').forEach((button) => {
+    button.onclick = (event) => {
+      event.stopPropagation();
+      openClientFromPlan(button.dataset.planClientId);
+    };
+  });
+}
+
+function renderPlanSection(section, entries, isSearch) {
+  const list = $(`#plan${section}List`);
+  const empty = $(`#plan${section}Empty`);
+  const badge = $(`#plan${section}Badge`);
+  if (!list || !empty || !badge) return;
+
+  list.innerHTML = entries.map(planWorkCard).join('');
+  badge.textContent = `(${entries.length})`;
+  empty.textContent = isSearch
+    ? 'По вашему запросу ничего не найдено'
+    : {
+        Today: 'На сегодня работ нет',
+        Overdue: 'Просроченных работ нет',
+        Upcoming: 'Ближайших работ пока нет',
+      }[section];
+  empty.classList.toggle('hidden', entries.length > 0);
+}
+
+function planWorkCard(entry) {
+  const { clientId, clientName, clientPhone, clientAddress, work } = entry;
+  const phoneHref = toText(clientPhone).replace(/[^\d+]/g, '');
+  const statusClass = {
+    'Планируется': 'planned',
+    'В работе': 'progress',
+    'Завершено': 'done',
+    'Отменено': 'cancelled',
+  }[work.status] || 'planned';
+  const address = work.address || clientAddress;
+  const details = [
+    work.date ? `🗓 ${esc(formatClientDate(work.date))}` : '',
+    clientName ? `👤 ${esc(clientName)}` : '',
+    address ? `📍 ${esc(address)}` : '',
+    work.amount ? `💰 ${esc(work.amount)}` : '',
+  ].filter(Boolean);
+
+  return `
+    <article class="plan-work-card">
+      <div class="plan-work-main">
+        <div class="plan-work-heading">
+          <div>
+            <div class="plan-work-title">${esc(work.title)}</div>
+            <div class="plan-work-details">${details.join('<span>•</span>')}</div>
+          </div>
+          <span class="work-status ${esc(statusClass)}">${esc(work.status)}</span>
+        </div>
+        ${work.notes ? `<div class="plan-work-notes">${esc(work.notes)}</div>` : ''}
+      </div>
+      <div class="plan-work-actions">
+        ${phoneHref ? `<a class="client-call" href="tel:${esc(phoneHref)}">Позвонить</a>` : ''}
+        <button class="client-open-btn" data-plan-client-id="${esc(clientId)}" type="button">Открыть клиента</button>
+      </div>
+    </article>`;
+}
+
+function openClientFromPlan(clientId) {
+  if (!state.clients.some((client) => client.id === clientId)) {
+    showToast('Клиент не найден');
+    return;
+  }
+  showClientsView(true);
+  openClientForm(clientId);
 }
 
 

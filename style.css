@@ -67,3 +67,34 @@
 .backup-undo{width:100%;margin-top:10px;color:#FFD59A}
 .backup-note{margin-top:12px}
 @media(max-width:620px){.backup-actions{grid-template-columns:1fr}}
+
+
+/* v0.3.7 — план работ и выездов */
+.plan-header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin:4px 0 14px}.plan-title{margin-bottom:4px}
+.plan-summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:18px}
+.plan-summary-card{min-height:122px;padding:15px;border:1px solid #343438;border-top-color:#55401E;border-radius:16px;background:linear-gradient(145deg,#222225,#151517)}
+.plan-summary-card span{display:block;color:var(--gold2);font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:.04em}
+.plan-summary-card strong{display:block;margin-top:10px;color:var(--text);font-size:25px;line-height:1.1}
+.plan-summary-card small{display:block;margin-top:7px;color:var(--muted);font-size:11px;line-height:1.35}
+.plan-summary-card.overdue{border-color:#743A32;background:linear-gradient(145deg,rgba(88,31,25,.52),#151517)}
+.plan-summary-card.overdue span,.plan-summary-card.overdue strong{color:#FFAAA0}
+.plan-summary-card.done{border-color:#356B40}.plan-summary-card.done strong{color:#9FE0AD}
+.plan-group{margin-top:18px}.plan-group-overdue{padding-top:2px}
+.plan-group-heading{display:flex;align-items:center;justify-content:space-between}
+.plan-list{display:flex;flex-direction:column;gap:10px}
+.plan-empty{padding:24px 10px;border:1px dashed #353538;border-radius:14px;color:var(--muted);text-align:center}
+.plan-work-card{display:flex;align-items:stretch;justify-content:space-between;gap:14px;padding:15px;border:1px solid #343438;border-top-color:#55401E;border-radius:16px;background:linear-gradient(145deg,#222225,#151517);box-shadow:0 8px 24px rgba(0,0,0,.16)}
+.plan-group-overdue .plan-work-card{border-color:#66352F;border-top-color:#A4473B;background:linear-gradient(145deg,rgba(72,29,25,.5),#151517)}
+.plan-work-main{min-width:0;flex:1}
+.plan-work-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.plan-work-title{font-size:17px;font-weight:850;color:var(--text)}
+.plan-work-details{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px;color:var(--muted);font-size:12px}.plan-work-details span{color:#625A4D}
+.plan-work-notes{margin-top:10px;color:#D2CEC5;font-size:13px;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plan-work-actions{display:flex;align-items:flex-end;justify-content:flex-end;gap:8px;flex:0 0 auto}
+@media(min-width:760px){.plan-summary-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:620px){
+  .plan-work-card{flex-direction:column}
+  .plan-work-heading{flex-direction:column}.plan-work-heading .work-status{align-self:flex-start}
+  .plan-work-actions{align-items:stretch}.plan-work-actions>*{flex:1;text-align:center}
+  .plan-summary-card strong{font-size:21px}
+}

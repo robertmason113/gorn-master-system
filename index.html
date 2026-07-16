@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="GORN">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="manifest.webmanifest?v=0.3.6">
+    <link rel="manifest" href="manifest.webmanifest?v=0.3.7">
     <link rel="icon" href="icon-192.png" type="image/png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <link rel="stylesheet" href="style.css?v=0.3.6">
+    <link rel="stylesheet" href="style.css?v=0.3.7">
     <title>GORN MASTER SYSTEM</title>
   </head>
   <body>
@@ -21,7 +21,7 @@
         <div>
           <h1>GORN</h1>
           <p>Профессиональный помощник печника</p>
-          <div id="versionLine" class="version-line">v0.3.6 • Stable • 16.07.2026</div>
+          <div id="versionLine" class="version-line">v0.3.7 • Stable • 16.07.2026</div>
         </div>
       </div>
       <input id="search" type="search" placeholder="Поиск: дымит, кирпич, чистка...">
@@ -54,6 +54,62 @@
         <div id="cardContent"></div>
       </section>
 
+
+      <section id="planView" class="hidden">
+        <div class="plan-header">
+          <div>
+            <div class="section-title plan-title">ПЛАН РАБОТ И ВЫЕЗДОВ</div>
+            <div class="clients-storage-note">Сегодня, просроченные задачи и ближайшие работы по всем клиентам</div>
+          </div>
+        </div>
+
+        <div class="plan-summary-grid">
+          <article class="plan-summary-card today">
+            <span>Сегодня</span>
+            <strong id="planTodayCount">0</strong>
+            <small>работ и выездов</small>
+          </article>
+          <article class="plan-summary-card overdue">
+            <span>Просрочено</span>
+            <strong id="planOverdueCount">0</strong>
+            <small>требуют внимания</small>
+          </article>
+          <article class="plan-summary-card money">
+            <span>Запланировано</span>
+            <strong id="planPlannedAmount">0 ₽</strong>
+            <small>по работам со статусом «Планируется»</small>
+          </article>
+          <article class="plan-summary-card done">
+            <span>Завершено</span>
+            <strong id="planCompletedAmount">0 ₽</strong>
+            <small>сумма выполненных работ</small>
+          </article>
+        </div>
+
+        <section class="plan-group">
+          <div class="plan-group-heading">
+            <div class="section-title">СЕГОДНЯ <span id="planTodayBadge" class="count-badge"></span></div>
+          </div>
+          <div id="planTodayList" class="plan-list"></div>
+          <div id="planTodayEmpty" class="plan-empty">На сегодня работ нет</div>
+        </section>
+
+        <section class="plan-group plan-group-overdue">
+          <div class="plan-group-heading">
+            <div class="section-title">ПРОСРОЧЕНО <span id="planOverdueBadge" class="count-badge"></span></div>
+          </div>
+          <div id="planOverdueList" class="plan-list"></div>
+          <div id="planOverdueEmpty" class="plan-empty">Просроченных работ нет</div>
+        </section>
+
+        <section class="plan-group">
+          <div class="plan-group-heading">
+            <div class="section-title">БЛИЖАЙШИЕ РАБОТЫ <span id="planUpcomingBadge" class="count-badge"></span></div>
+          </div>
+          <div id="planUpcomingList" class="plan-list"></div>
+          <div id="planUpcomingEmpty" class="plan-empty">Ближайших работ пока нет</div>
+        </section>
+      </section>
 
       <section id="clientsView" class="hidden">
         <div class="clients-header">
@@ -233,15 +289,15 @@
           <img src="icon-192.png" alt="GORN">
           <h2>GORN MASTER SYSTEM</h2>
           <p>Профессиональный помощник печника</p>
-          <div id="aboutVersion" class="about-version">Версия 0.3.6 Stable</div>
+          <div id="aboutVersion" class="about-version">Версия 0.3.7 Stable</div>
           <p id="aboutUpdated">Обновлено: 16.07.2026</p>
           <h3>Что нового</h3>
           <ul>
-            <li>Экспорт всей базы клиентов и работ в один JSON-файл</li>
-            <li>Импорт резервной копии обратно на устройство</li>
-            <li>Проверка файла до замены текущих данных</li>
-            <li>Подтверждение с количеством клиентов и работ</li>
-            <li>Точка отмены перед каждым импортом</li>
+            <li>Отдельный экран «План» для всех работ и выездов</li>
+            <li>Работы на сегодня, просроченные и ближайшие задачи</li>
+            <li>Быстрый переход к карточке клиента и звонок</li>
+            <li>Сумма запланированных и завершённых работ</li>
+            <li>Поиск по клиентам, адресам и видам работ в плане</li>
           </ul>
 
           <section class="backup-panel" aria-labelledby="backupTitle">
@@ -265,11 +321,12 @@
     <nav class="bottom-nav">
       <button data-nav="home" class="active" type="button">⌂<span>Главная</span></button>
       <button data-nav="favorites" type="button">★<span>Избранное</span></button>
+      <button data-nav="plan" type="button">🗓<span>План</span></button>
       <button data-nav="clients" type="button">👤<span>Клиенты</span></button>
       <button data-nav="about" type="button">ⓘ<span>О системе</span></button>
     </nav>
 
     <div id="toast" class="toast">Скопировано</div>
-    <script src="app.js?v=0.3.6"></script>
+    <script src="app.js?v=0.3.7"></script>
   </body>
 </html>
