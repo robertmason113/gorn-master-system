@@ -1,5 +1,5 @@
 const APP_META = {
-  version: '0.3.1',
+  version: '0.3.2',
   status: 'Stable',
   updated: '16.07.2026',
 };
@@ -19,6 +19,7 @@ const state = {
   cards: [],
   category: 'Все',
   current: null,
+  mode: 'home',
   favorites: readStoredArray('gornFavorites'),
   recent: readStoredArray('gornRecent'),
 };
@@ -93,6 +94,7 @@ function normalizeCard(rawCard, index) {
     time: toText(source.time, 'Нужно уточнить'),
     repairability: toText(source.repairability, 'Нужно смотреть'),
     risk: normalizeRisk(source.risk),
+    sourceIndex: index,
   };
 
   ARRAY_FIELDS.forEach((field) => {
@@ -152,7 +154,8 @@ async function init() {
     save();
 
     renderCategories();
-    renderHome();
+    showListView('home', false);
+    history.replaceState({ view: 'home' }, '', window.location.href);
   } catch (error) {
     showLoadError(error);
   }
@@ -170,9 +173,17 @@ function renderVersion() {
 }
 
 function bindEvents() {
-  $('#search')?.addEventListener('input', () => renderHome());
-  $('#backBtn')?.addEventListener('click', goHome);
-  $('#aboutBackBtn')?.addEventListener('click', goHome);
+  const search = $('#search');
+  search?.addEventListener('input', () => renderHome());
+  search?.addEventListener('search', () => renderHome());
+  search?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !search.value) return;
+    search.value = '';
+    renderHome();
+  });
+
+  $('#backBtn')?.addEventListener('click', goBack);
+  $('#aboutBackBtn')?.addEventListener('click', goBack);
   $('#favoriteBtn')?.addEventListener('click', () => {
     if (!state.current) return;
     toggleFavorite(state.current.id);
@@ -182,6 +193,8 @@ function bindEvents() {
   document.querySelectorAll('[data-nav]').forEach((button) => {
     button.addEventListener('click', () => navigate(button.dataset.nav));
   });
+
+  window.addEventListener('popstate', (event) => restoreHistoryView(event.state));
 }
 
 function registerServiceWorker() {
@@ -216,26 +229,52 @@ function showLoadError(error) {
   $('#retryBtn')?.addEventListener('click', () => window.location.reload());
 }
 
-function navigate(where) {
-  document.querySelectorAll('.bottom-nav button').forEach((button) => {
-    button.classList.toggle('active', button.dataset.nav === where);
-  });
-
+function navigate(where, pushHistory = true) {
   if (where === 'about') {
+    state.mode = 'about';
+    setActiveNav('about');
     showOnly('aboutView');
+    if (pushHistory) history.pushState({ view: 'about' }, '', window.location.href);
     return;
   }
 
-  showOnly('homeView');
-  state.category = 'Все';
-  renderCategories();
+  const mode = where === 'favorites' ? 'favorites' : 'home';
+  showListView(mode, pushHistory);
+}
 
-  if (where === 'favorites') {
-    $('#search').value = '';
-    renderHome(true);
-  } else {
-    renderHome();
+function showListView(mode = state.mode, pushHistory = false) {
+  state.mode = mode === 'favorites' ? 'favorites' : 'home';
+  state.current = null;
+  setActiveNav(state.mode);
+  showOnly('homeView');
+  renderCategories();
+  renderHome();
+
+  if (pushHistory) {
+    history.pushState({ view: state.mode }, '', window.location.href);
   }
+}
+
+function setActiveNav(where) {
+  document.querySelectorAll('.bottom-nav button').forEach((button) => {
+    button.classList.toggle('active', button.dataset.nav === where);
+  });
+}
+
+function restoreHistoryView(historyState) {
+  const view = historyState?.view || 'home';
+
+  if (view === 'card' && historyState.cardId) {
+    openCard(historyState.cardId, false);
+    return;
+  }
+
+  if (view === 'about') {
+    navigate('about', false);
+    return;
+  }
+
+  showListView(view === 'favorites' ? 'favorites' : 'home', false);
 }
 
 function showOnly(id) {
@@ -272,29 +311,98 @@ function renderCategories() {
   });
 }
 
-function filtered(favoritesOnly = false) {
-  const query = $('#search').value.trim().toLowerCase();
-
-  return state.cards.filter((card) => {
-    const matchesCategory = state.category === 'Все' || card.category === state.category;
-    const matchesFavorite = !favoritesOnly || state.favorites.includes(card.id);
-    const searchableText = [
-      card.title,
-      card.category,
-      ...card.keywords,
-      ...card.reply,
-      ...card.price,
-      ...card.phone,
-    ]
-      .join(' ')
-      .toLowerCase();
-
-    return matchesCategory && matchesFavorite && (!query || searchableText.includes(query));
-  });
+function normalizeSearchText(value) {
+  return toText(value)
+    .toLowerCase()
+    .replaceAll('ё', 'е')
+    .replace(/[^a-zа-я0-9]+/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-function renderHome(favoritesOnly = false) {
-  const list = filtered(favoritesOnly);
+function tokenMatches(queryToken, textToken) {
+  if (!queryToken || !textToken) return false;
+  if (textToken.includes(queryToken)) return true;
+
+  const minimumPrefixLength = 4;
+  return (
+    queryToken.length >= minimumPrefixLength &&
+    textToken.length >= minimumPrefixLength &&
+    (textToken.startsWith(queryToken) || queryToken.startsWith(textToken))
+  );
+}
+
+function fieldContainsTokens(value, tokens) {
+  const fieldTokens = normalizeSearchText(value).split(' ').filter(Boolean);
+  return tokens.every((queryToken) =>
+    fieldTokens.some((fieldToken) => tokenMatches(queryToken, fieldToken)),
+  );
+}
+
+function buildSearchFields(card) {
+  return {
+    title: normalizeSearchText(card.title),
+    category: normalizeSearchText(card.category),
+    keywords: normalizeSearchText(card.keywords.join(' ')),
+    details: normalizeSearchText(
+      [
+        ...card.reply,
+        ...card.price,
+        ...card.phone,
+        ...card.photos,
+        ...card.check,
+        ...card.materials,
+        ...card.flags,
+        card.risk.text,
+        card.time,
+        card.repairability,
+      ].join(' '),
+    ),
+  };
+}
+
+function searchScore(card, rawQuery) {
+  const query = normalizeSearchText(rawQuery);
+  if (!query) return 1;
+
+  const tokens = query.split(' ').filter(Boolean);
+  const fields = buildSearchFields(card);
+  const allText = `${fields.title} ${fields.category} ${fields.keywords} ${fields.details}`;
+
+  if (!fieldContainsTokens(allText, tokens)) return 0;
+
+  let score = 10;
+  if (fields.title === query) score += 500;
+  else if (fields.title.startsWith(query)) score += 350;
+  else if (fields.title.includes(query)) score += 250;
+
+  tokens.forEach((token) => {
+    if (fieldContainsTokens(fields.title, [token])) score += 80;
+    if (fieldContainsTokens(fields.keywords, [token])) score += 45;
+    if (fieldContainsTokens(fields.category, [token])) score += 25;
+    if (fieldContainsTokens(fields.details, [token])) score += 10;
+  });
+
+  return score;
+}
+
+function filtered() {
+  const query = $('#search').value;
+  const favoritesOnly = state.mode === 'favorites';
+
+  return state.cards
+    .map((card) => ({ card, score: searchScore(card, query) }))
+    .filter(({ card, score }) => {
+      const matchesCategory = state.category === 'Все' || card.category === state.category;
+      const matchesFavorite = !favoritesOnly || state.favorites.includes(card.id);
+      return matchesCategory && matchesFavorite && score > 0;
+    })
+    .sort((a, b) => b.score - a.score || a.card.sourceIndex - b.card.sourceIndex)
+    .map(({ card }) => card);
+}
+
+function renderHome() {
+  const list = filtered();
   renderQuick();
   $('#countBadge').textContent = `(${list.length})`;
   $('#list').innerHTML = list.map(listCard).join('');
@@ -353,7 +461,7 @@ function listCard(card) {
     </article>`;
 }
 
-function openCard(id) {
+function openCard(id, pushHistory = true) {
   const card = state.cards.find((item) => item.id === id);
   if (!card) return;
 
@@ -362,6 +470,10 @@ function openCard(id) {
   save();
   showOnly('cardView');
   updateFavoriteButton();
+
+  if (pushHistory) {
+    history.pushState({ view: 'card', cardId: id }, '', window.location.href);
+  }
 
   const riskIcon = card.risk.level === 'red' ? '🔴' : card.risk.level === 'green' ? '🟢' : '🟡';
 
@@ -412,9 +524,12 @@ function listSection(title, items = [], className = '') {
     </section>`;
 }
 
-function goHome() {
-  showOnly('homeView');
-  renderHome();
+function goBack() {
+  if (history.state?.view && history.state.view !== 'home') {
+    history.back();
+    return;
+  }
+  showListView('home', false);
 }
 
 function toggleFavorite(id) {
@@ -422,7 +537,10 @@ function toggleFavorite(id) {
     ? state.favorites.filter((item) => item !== id)
     : [id, ...state.favorites];
   save();
-  renderHome();
+
+  if (!$('#homeView').classList.contains('hidden')) {
+    renderHome();
+  }
 }
 
 function updateFavoriteButton() {
