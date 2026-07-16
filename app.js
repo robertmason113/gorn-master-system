@@ -1,11 +1,15 @@
 const APP_META = {
-  version: '0.3.5',
+  version: '0.3.6',
   status: 'Stable',
   updated: '16.07.2026',
 };
 
 const CLIENT_STATUSES = ['Новый', 'Связаться', 'Выезд назначен', 'В работе', 'Завершён', 'Отказ'];
 const WORK_STATUSES = ['Планируется', 'В работе', 'Завершено', 'Отменено'];
+
+const BACKUP_FORMAT = 'GORN_MASTER_SYSTEM_BACKUP';
+const BACKUP_SCHEMA_VERSION = 1;
+const PRE_IMPORT_BACKUP_KEY = 'gornBeforeLastImport';
 
 const stateDefaults = {
   clientStatusFilter: 'Все',
@@ -279,6 +283,12 @@ function bindEvents() {
 
   $('#newClientBtn')?.addEventListener('click', () => openClientForm());
 
+
+  $('#exportBackupBtn')?.addEventListener('click', exportBackup);
+  $('#importBackupBtn')?.addEventListener('click', () => $('#importBackupInput')?.click());
+  $('#importBackupInput')?.addEventListener('change', importBackupFile);
+  $('#undoImportBtn')?.addEventListener('click', undoLastImport);
+
   document.querySelectorAll('[data-client-filter]').forEach((button) => {
     button.addEventListener('click', () => {
       state.clientStatusFilter = button.dataset.clientFilter || 'Все';
@@ -353,6 +363,7 @@ function navigate(where, pushHistory = true) {
     state.mode = 'about';
     setActiveNav('about');
     showOnly('aboutView');
+    renderBackupInfo();
     if (pushHistory) history.pushState({ view: 'about' }, '', window.location.href);
     return;
   }
@@ -450,6 +461,210 @@ function save() {
     localStorage.setItem('gornClients', JSON.stringify(state.clients));
   } catch (error) {
     console.warn('GORN: не удалось сохранить локальные данные', error);
+  }
+}
+
+function countClientWorks(clients = state.clients) {
+  return clients.reduce(
+    (total, client) => total + (Array.isArray(client.works) ? client.works.length : 0),
+    0,
+  );
+}
+
+function createBackupPayload() {
+  return {
+    format: BACKUP_FORMAT,
+    schemaVersion: BACKUP_SCHEMA_VERSION,
+    appVersion: APP_META.version,
+    exportedAt: new Date().toISOString(),
+    data: {
+      clients: state.clients,
+      favorites: state.favorites,
+      recent: state.recent,
+    },
+  };
+}
+
+function backupFileName(prefix = 'GORN_DATA_BACKUP') {
+  const now = new Date();
+  const stamp = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+    String(now.getHours()).padStart(2, '0'),
+    String(now.getMinutes()).padStart(2, '0'),
+  ].join('-');
+  return `${prefix}_${stamp}.json`;
+}
+
+function downloadJson(payload, filename) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: 'application/json;charset=utf-8',
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportBackup() {
+  downloadJson(createBackupPayload(), backupFileName());
+  showToast('Резервная копия скачана');
+}
+
+function normalizeImportedClients(rawClients) {
+  if (!Array.isArray(rawClients)) {
+    throw new Error('В резервной копии отсутствует список клиентов');
+  }
+
+  const usedClientIds = new Set();
+  return rawClients.map((rawClient, clientIndex) => {
+    const client = normalizeClient(rawClient, clientIndex);
+    if (usedClientIds.has(client.id)) client.id = createClientId();
+    usedClientIds.add(client.id);
+
+    const usedWorkIds = new Set();
+    client.works = client.works.map((work, workIndex) => {
+      const normalizedWork = normalizeWork(work, workIndex);
+      if (usedWorkIds.has(normalizedWork.id)) normalizedWork.id = createWorkId();
+      usedWorkIds.add(normalizedWork.id);
+      return normalizedWork;
+    });
+    return client;
+  });
+}
+
+function parseBackupPayload(rawPayload) {
+  if (!rawPayload || typeof rawPayload !== 'object') {
+    throw new Error('Файл не содержит резервную копию GORN');
+  }
+  if (rawPayload.format !== BACKUP_FORMAT) {
+    throw new Error('Это не файл резервной копии GORN');
+  }
+  if (Number(rawPayload.schemaVersion) !== BACKUP_SCHEMA_VERSION) {
+    throw new Error('Версия формата резервной копии не поддерживается');
+  }
+  if (!rawPayload.data || typeof rawPayload.data !== 'object') {
+    throw new Error('В резервной копии отсутствуют данные');
+  }
+
+  const clients = normalizeImportedClients(rawPayload.data.clients);
+  const favorites = toArray(rawPayload.data.favorites);
+  const recent = toArray(rawPayload.data.recent);
+
+  return {
+    clients,
+    favorites,
+    recent,
+    appVersion: toText(rawPayload.appVersion, 'не указана'),
+    exportedAt: toText(rawPayload.exportedAt),
+  };
+}
+
+function applyImportedData(data) {
+  state.clients = data.clients;
+  state.favorites = data.favorites.filter((id) => state.cards.some((card) => card.id === id));
+  state.recent = data.recent.filter((id) => state.cards.some((card) => card.id === id));
+  state.clientSearch = '';
+  state.clientStatusFilter = stateDefaults.clientStatusFilter;
+  state.clientSort = stateDefaults.clientSort;
+  state.editingClientId = null;
+  state.editingWorkId = null;
+  save();
+}
+
+function readUndoImportBackup() {
+  try {
+    const raw = localStorage.getItem(PRE_IMPORT_BACKUP_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (error) {
+    console.warn('GORN: точка отмены импорта повреждена', error);
+    localStorage.removeItem(PRE_IMPORT_BACKUP_KEY);
+    return null;
+  }
+}
+
+async function importBackupFile(event) {
+  const input = event.target;
+  const file = input?.files?.[0];
+  if (!file) return;
+
+  try {
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error('Файл слишком большой — максимум 10 МБ');
+    }
+
+    const rawPayload = JSON.parse(await file.text());
+    const imported = parseBackupPayload(rawPayload);
+    const currentWorks = countClientWorks(state.clients);
+    const importedWorks = countClientWorks(imported.clients);
+    const approved = window.confirm(
+      `Импорт заменит текущую базу.\n\n` +
+        `Сейчас: ${state.clients.length} клиентов, ${currentWorks} работ.\n` +
+        `В файле: ${imported.clients.length} клиентов, ${importedWorks} работ.\n\n` +
+        'Перед заменой GORN сохранит точку отмены на этом устройстве. Продолжить?',
+    );
+    if (!approved) return;
+
+    localStorage.setItem(PRE_IMPORT_BACKUP_KEY, JSON.stringify(createBackupPayload()));
+    applyImportedData(imported);
+    closeClientForm();
+    renderBackupInfo();
+    showToast('База восстановлена');
+  } catch (error) {
+    console.error('GORN: ошибка импорта резервной копии', error);
+    window.alert(`Не удалось импортировать базу.\n${error.message || 'Проверьте файл.'}`);
+  } finally {
+    if (input) input.value = '';
+  }
+}
+
+function undoLastImport() {
+  const rawPayload = readUndoImportBackup();
+  if (!rawPayload) {
+    showToast('Точки отмены нет');
+    renderBackupInfo();
+    return;
+  }
+
+  try {
+    const previous = parseBackupPayload(rawPayload);
+    const works = countClientWorks(previous.clients);
+    if (
+      !window.confirm(
+        `Вернуть базу до последнего импорта: ${previous.clients.length} клиентов, ${works} работ?`,
+      )
+    ) {
+      return;
+    }
+
+    applyImportedData(previous);
+    localStorage.removeItem(PRE_IMPORT_BACKUP_KEY);
+    closeClientForm();
+    renderBackupInfo();
+    showToast('Предыдущая база возвращена');
+  } catch (error) {
+    console.error('GORN: не удалось отменить импорт', error);
+    localStorage.removeItem(PRE_IMPORT_BACKUP_KEY);
+    renderBackupInfo();
+    window.alert('Точка отмены повреждена и была удалена.');
+  }
+}
+
+function renderBackupInfo() {
+  const stats = $('#backupStats');
+  const undoButton = $('#undoImportBtn');
+  const works = countClientWorks(state.clients);
+  if (stats) {
+    stats.textContent = `В текущей базе: ${state.clients.length} клиентов, ${works} работ`;
+  }
+  if (undoButton) {
+    undoButton.classList.toggle('hidden', !readUndoImportBackup());
   }
 }
 

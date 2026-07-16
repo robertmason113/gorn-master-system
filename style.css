@@ -55,3 +55,15 @@
   .sort-control{flex-basis:auto;width:100%}
   .client-name-row{align-items:flex-start}
 }
+
+
+/* v0.3.6 — экспорт, импорт и защита локальной базы */
+.backup-panel{margin-top:22px;padding:16px;border:1px solid #55401E;border-radius:16px;background:linear-gradient(145deg,#211D17,#151517);text-align:left}
+.backup-panel h3{margin:0 0 8px;color:var(--gold2)}
+.backup-description,.backup-note{margin:0;color:var(--muted);font-size:13px;line-height:1.5}
+.backup-stats{margin:13px 0;padding:11px 12px;border:1px solid #343438;border-radius:11px;background:#1B1B1E;color:var(--stone);font-weight:750}
+.backup-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.backup-actions button{width:100%}
+.backup-undo{width:100%;margin-top:10px;color:#FFD59A}
+.backup-note{margin-top:12px}
+@media(max-width:620px){.backup-actions{grid-template-columns:1fr}}

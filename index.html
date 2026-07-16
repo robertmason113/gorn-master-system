@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="GORN">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="manifest.webmanifest?v=0.3.5">
+    <link rel="manifest" href="manifest.webmanifest?v=0.3.6">
     <link rel="icon" href="icon-192.png" type="image/png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <link rel="stylesheet" href="style.css?v=0.3.5">
+    <link rel="stylesheet" href="style.css?v=0.3.6">
     <title>GORN MASTER SYSTEM</title>
   </head>
   <body>
@@ -21,7 +21,7 @@
         <div>
           <h1>GORN</h1>
           <p>Профессиональный помощник печника</p>
-          <div id="versionLine" class="version-line">v0.3.5 • Stable • 16.07.2026</div>
+          <div id="versionLine" class="version-line">v0.3.6 • Stable • 16.07.2026</div>
         </div>
       </div>
       <input id="search" type="search" placeholder="Поиск: дымит, кирпич, чистка...">
@@ -233,16 +233,30 @@
           <img src="icon-192.png" alt="GORN">
           <h2>GORN MASTER SYSTEM</h2>
           <p>Профессиональный помощник печника</p>
-          <div id="aboutVersion" class="about-version">Версия 0.3.5 Stable</div>
+          <div id="aboutVersion" class="about-version">Версия 0.3.6 Stable</div>
           <p id="aboutUpdated">Обновлено: 16.07.2026</p>
           <h3>Что нового</h3>
           <ul>
-            <li>Статусы клиентов: от нового обращения до завершения</li>
-            <li>Быстрые фильтры клиентов и работ по статусам</li>
-            <li>Сортировка клиентов по изменениям, дате и имени</li>
-            <li>Сортировка истории работ по дате и изменениям</li>
-            <li>Существующие клиенты и история работ сохранены</li>
+            <li>Экспорт всей базы клиентов и работ в один JSON-файл</li>
+            <li>Импорт резервной копии обратно на устройство</li>
+            <li>Проверка файла до замены текущих данных</li>
+            <li>Подтверждение с количеством клиентов и работ</li>
+            <li>Точка отмены перед каждым импортом</li>
           </ul>
+
+          <section class="backup-panel" aria-labelledby="backupTitle">
+            <h3 id="backupTitle">Резервная копия данных</h3>
+            <p class="backup-description">Сохраняет клиентов, историю работ, избранное и недавние карточки в одном файле.</p>
+            <div id="backupStats" class="backup-stats">В текущей базе: 0 клиентов, 0 работ</div>
+            <div class="backup-actions">
+              <button id="exportBackupBtn" class="primary-btn" type="button">⬇ Экспортировать базу</button>
+              <button id="importBackupBtn" class="secondary-btn" type="button">⬆ Импортировать базу</button>
+            </div>
+            <input id="importBackupInput" type="file" accept=".json,application/json" hidden>
+            <button id="undoImportBtn" class="secondary-btn backup-undo hidden" type="button">↩ Отменить последний импорт</button>
+            <p class="backup-note">Перед импортом GORN проверяет файл, показывает объём данных и создаёт точку отмены на этом устройстве.</p>
+          </section>
+
           <div class="slogan">Там, где рождается тепло дома.</div>
         </div>
       </section>
@@ -256,6 +270,6 @@
     </nav>
 
     <div id="toast" class="toast">Скопировано</div>
-    <script src="app.js?v=0.3.5"></script>
+    <script src="app.js?v=0.3.6"></script>
   </body>
 </html>
