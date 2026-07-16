@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="GORN">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="manifest.webmanifest?v=0.3.3-hotfix1">
+    <link rel="manifest" href="manifest.webmanifest?v=0.3.4">
     <link rel="icon" href="icon-192.png" type="image/png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <link rel="stylesheet" href="style.css?v=0.3.3-hotfix1">
+    <link rel="stylesheet" href="style.css?v=0.3.4">
     <title>GORN MASTER SYSTEM</title>
   </head>
   <body>
@@ -21,7 +21,7 @@
         <div>
           <h1>GORN</h1>
           <p>Профессиональный помощник печника</p>
-          <div id="versionLine" class="version-line">v0.3.3 • Stable • 16.07.2026</div>
+          <div id="versionLine" class="version-line">v0.3.4 • Stable • 16.07.2026</div>
         </div>
       </div>
       <input id="search" type="search" placeholder="Поиск: дымит, кирпич, чистка...">
@@ -102,6 +102,69 @@
               <button id="deleteClientBtn" class="danger-btn hidden" type="button">Удалить</button>
             </div>
           </form>
+
+          <section id="workHistoryWrap" class="work-history hidden">
+            <div class="work-history-header">
+              <div>
+                <div class="section-title work-section-title">ИСТОРИЯ ОБЪЕКТОВ И РАБОТ <span id="workCountBadge" class="count-badge"></span></div>
+                <div class="clients-storage-note">Каждый выезд, объект и выполненная работа сохраняются в карточке клиента</div>
+              </div>
+              <button id="addWorkBtn" class="primary-btn compact-btn" type="button">+ Добавить работу</button>
+            </div>
+
+            <div id="workFormWrap" class="hidden">
+              <form id="workForm" class="work-form">
+                <div class="client-form-header">
+                  <h3 id="workFormTitle">Новая работа</h3>
+                  <button id="closeWorkFormBtn" class="secondary-btn" type="button">Закрыть</button>
+                </div>
+
+                <label class="form-field">
+                  <span>Вид работы *</span>
+                  <input id="workTitle" type="text" maxlength="180" required placeholder="Например: ремонт топки, чистка дымохода...">
+                </label>
+
+                <div class="form-grid">
+                  <label class="form-field">
+                    <span>Дата работы</span>
+                    <input id="workDate" type="date">
+                  </label>
+                  <label class="form-field">
+                    <span>Статус</span>
+                    <select id="workStatus">
+                      <option>Планируется</option>
+                      <option>В работе</option>
+                      <option>Завершено</option>
+                      <option>Отменено</option>
+                    </select>
+                  </label>
+                </div>
+
+                <label class="form-field">
+                  <span>Объект / адрес</span>
+                  <input id="workAddress" type="text" maxlength="240" placeholder="Адрес или краткое название объекта">
+                </label>
+
+                <label class="form-field">
+                  <span>Стоимость</span>
+                  <input id="workAmount" type="text" maxlength="100" inputmode="decimal" placeholder="Например: 40 000 ₽">
+                </label>
+
+                <label class="form-field">
+                  <span>Что сделано / договорённости</span>
+                  <textarea id="workNotes" rows="5" maxlength="4000" placeholder="Объём работ, материалы, результат, что осталось сделать..."></textarea>
+                </label>
+
+                <div class="client-form-actions">
+                  <button class="primary-btn" type="submit">Сохранить работу</button>
+                  <button id="deleteWorkBtn" class="danger-btn hidden" type="button">Удалить запись</button>
+                </div>
+              </form>
+            </div>
+
+            <div id="workList" class="work-list"></div>
+            <div id="workEmpty" class="empty">История работ пока пуста</div>
+          </section>
         </div>
 
         <div id="clientsList" class="client-list"></div>
@@ -114,15 +177,15 @@
           <img src="icon-192.png" alt="GORN">
           <h2>GORN MASTER SYSTEM</h2>
           <p>Профессиональный помощник печника</p>
-          <div id="aboutVersion" class="about-version">Версия 0.3.3 Stable</div>
+          <div id="aboutVersion" class="about-version">Версия 0.3.4 Stable</div>
           <p id="aboutUpdated">Обновлено: 16.07.2026</p>
           <h3>Что нового</h3>
           <ul>
-            <li>Добавлен отдельный раздел «Клиенты»</li>
-            <li>Имя, телефон, адрес объекта и дата обращения</li>
-            <li>Заметки и редактирование карточки клиента</li>
-            <li>Поиск клиентов по имени, телефону, адресу и заметкам</li>
-            <li>Данные сохраняются локально на текущем устройстве</li>
+            <li>История объектов и работ внутри карточки клиента</li>
+            <li>Дата, адрес, вид работ, статус и стоимость</li>
+            <li>Отдельные заметки по каждому выезду и объекту</li>
+            <li>Редактирование и удаление записей о работах</li>
+            <li>Поиск клиентов учитывает историю выполненных работ</li>
           </ul>
           <div class="slogan">Там, где рождается тепло дома.</div>
         </div>
@@ -137,6 +200,6 @@
     </nav>
 
     <div id="toast" class="toast">Скопировано</div>
-    <script src="app.js?v=0.3.3-hotfix1"></script>
+    <script src="app.js?v=0.3.4"></script>
   </body>
 </html>
