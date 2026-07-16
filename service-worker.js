@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gorn-v0.3.9';
+const CACHE_NAME = 'gorn-v0.3.9-hotfix1';
 const APP_ASSETS = [
   './',
   './index.html',
