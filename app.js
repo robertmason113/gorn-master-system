@@ -1,11 +1,19 @@
 const APP_META = {
-  version: '0.3.7',
+  version: '0.3.8',
   status: 'Stable',
   updated: '16.07.2026',
 };
 
 const CLIENT_STATUSES = ['Новый', 'Связаться', 'Выезд назначен', 'В работе', 'Завершён', 'Отказ'];
 const WORK_STATUSES = ['Планируется', 'В работе', 'Завершено', 'Отменено'];
+const CHECKLIST_GROUPS = [
+  { key: 'take', label: 'Что взять с собой' },
+  { key: 'tools', label: 'Инструменты' },
+  { key: 'materials', label: 'Материалы' },
+];
+const MAX_WORK_PHOTOS = 6;
+const MAX_WORK_PHOTO_CHARS = 550000;
+const MAX_WORK_PHOTOS_TOTAL_CHARS = 2800000;
 
 const BACKUP_FORMAT = 'GORN_MASTER_SYSTEM_BACKUP';
 const BACKUP_SCHEMA_VERSION = 1;
@@ -43,6 +51,7 @@ const state = {
   workSort: stateDefaults.workSort,
   editingClientId: null,
   editingWorkId: null,
+  workChecklistDraft: null,
   favorites: readStoredArray('gornFavorites'),
   recent: readStoredArray('gornRecent'),
   clients: readStoredClients(),
@@ -78,6 +87,98 @@ function localDateISO(date = new Date()) {
   return local.toISOString().slice(0, 10);
 }
 
+
+function createChecklistItemId(group = 'item') {
+  return `${group}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeChecklistItem(rawItem, index = 0, group = 'item') {
+  const source = rawItem && typeof rawItem === 'object' ? rawItem : { text: rawItem };
+  return {
+    id: toText(source.id, `${group}-${index + 1}`),
+    text: toText(source.text),
+    done: Boolean(source.done),
+  };
+}
+
+function normalizeWorkPhoto(rawPhoto, index = 0) {
+  const source = rawPhoto && typeof rawPhoto === 'object' ? rawPhoto : {};
+  const dataUrl = toText(source.dataUrl);
+  return {
+    id: toText(source.id, `photo-${index + 1}`),
+    name: toText(source.name, `Фото ${index + 1}`),
+    dataUrl: dataUrl.startsWith('data:image/') ? dataUrl : '',
+    createdAt: toText(source.createdAt, new Date().toISOString()),
+  };
+}
+
+function createDefaultWorkChecklist() {
+  const makeItems = (group, values) =>
+    values.map((text) => ({
+      id: createChecklistItemId(group),
+      text,
+      done: false,
+    }));
+
+  return {
+    take: makeItems('take', ['Телефон и зарядка', 'Перчатки и защита']),
+    tools: makeItems('tools', ['Рулетка', 'Фонарь', 'Уровень']),
+    materials: [],
+    measurements: '',
+    photos: [],
+  };
+}
+
+function normalizeWorkChecklist(rawChecklist, useDefaults = false) {
+  const source = rawChecklist && typeof rawChecklist === 'object' ? rawChecklist : {};
+  const defaults = useDefaults
+    ? createDefaultWorkChecklist()
+    : {
+        take: [],
+        tools: [],
+        materials: [],
+        measurements: '',
+        photos: [],
+      };
+
+  const result = {
+    take: [],
+    tools: [],
+    materials: [],
+    measurements: toText(source.measurements, defaults.measurements),
+    photos: [],
+  };
+
+  CHECKLIST_GROUPS.forEach(({ key }) => {
+    const rawItems = Array.isArray(source[key]) ? source[key] : defaults[key];
+    result[key] = rawItems
+      .map((item, index) => normalizeChecklistItem(item, index, key))
+      .filter((item) => item.text);
+  });
+
+  const rawPhotos = Array.isArray(source.photos) ? source.photos : defaults.photos;
+  result.photos = rawPhotos
+    .map((photo, index) => normalizeWorkPhoto(photo, index))
+    .filter((photo) => photo.dataUrl)
+    .slice(0, MAX_WORK_PHOTOS);
+
+  return result;
+}
+
+function cloneWorkChecklist(checklist) {
+  return normalizeWorkChecklist(JSON.parse(JSON.stringify(checklist || {})));
+}
+
+function workChecklistProgress(checklist) {
+  const normalized = normalizeWorkChecklist(checklist);
+  const items = CHECKLIST_GROUPS.flatMap(({ key }) => normalized[key]);
+  return {
+    done: items.filter((item) => item.done).length,
+    total: items.length,
+    photos: normalized.photos.length,
+  };
+}
+
 function normalizeWork(rawWork, index = 0) {
   const source = rawWork && typeof rawWork === 'object' ? rawWork : {};
   const createdAt = toText(source.createdAt, new Date().toISOString());
@@ -91,6 +192,7 @@ function normalizeWork(rawWork, index = 0) {
     status: WORK_STATUSES.includes(rawStatus) ? rawStatus : 'Планируется',
     amount: toText(source.amount),
     notes: toText(source.notes),
+    checklist: normalizeWorkChecklist(source.checklist),
     createdAt,
     updatedAt: toText(source.updatedAt, createdAt),
   };
@@ -326,6 +428,24 @@ function bindEvents() {
   $('#workForm')?.addEventListener('submit', saveWorkFromForm);
   $('#deleteWorkBtn')?.addEventListener('click', deleteEditingWork);
 
+  document.querySelectorAll('[data-checklist-add]').forEach((button) => {
+    button.addEventListener('click', () => addWorkChecklistItem(button.dataset.checklistAdd));
+  });
+  document.querySelectorAll('[data-checklist-input]').forEach((input) => {
+    input.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      addWorkChecklistItem(input.dataset.checklistInput);
+    });
+  });
+  $('#workChecklistSection')?.addEventListener('change', handleWorkChecklistChange);
+  $('#workChecklistSection')?.addEventListener('click', handleWorkChecklistClick);
+  $('#workMeasurements')?.addEventListener('input', (event) => {
+    if (!state.workChecklistDraft) return;
+    state.workChecklistDraft.measurements = event.target.value;
+  });
+  $('#workPhotoInput')?.addEventListener('change', handleWorkPhotoFiles);
+
   document.querySelectorAll('[data-nav]').forEach((button) => {
     button.addEventListener('click', () => navigate(button.dataset.nav));
   });
@@ -500,8 +620,11 @@ function save() {
     localStorage.setItem('gornFavorites', JSON.stringify(state.favorites));
     localStorage.setItem('gornRecent', JSON.stringify(state.recent));
     localStorage.setItem('gornClients', JSON.stringify(state.clients));
+    return true;
   } catch (error) {
     console.warn('GORN: не удалось сохранить локальные данные', error);
+    showToast('Не удалось сохранить: память устройства заполнена');
+    return false;
   }
 }
 
@@ -615,6 +738,7 @@ function applyImportedData(data) {
   state.clientSort = stateDefaults.clientSort;
   state.editingClientId = null;
   state.editingWorkId = null;
+  state.workChecklistDraft = null;
   save();
 }
 
@@ -839,11 +963,14 @@ function planWorkCard(entry) {
     'Отменено': 'cancelled',
   }[work.status] || 'planned';
   const address = work.address || clientAddress;
+  const checklist = workChecklistProgress(work.checklist);
   const details = [
     work.date ? `🗓 ${esc(formatClientDate(work.date))}` : '',
     clientName ? `👤 ${esc(clientName)}` : '',
     address ? `📍 ${esc(address)}` : '',
     work.amount ? `💰 ${esc(work.amount)}` : '',
+    checklist.total ? `☑ ${checklist.done}/${checklist.total}` : '',
+    checklist.photos ? `📷 ${checklist.photos}` : '',
   ].filter(Boolean);
 
   return `
@@ -1114,10 +1241,13 @@ function renderWorkHistory(client = currentEditingClient()) {
 }
 
 function workCard(work) {
+  const checklist = workChecklistProgress(work.checklist);
   const details = [
     work.date ? `🗓 ${esc(formatClientDate(work.date))}` : '',
     work.address ? `📍 ${esc(work.address)}` : '',
     work.amount ? `💰 ${esc(work.amount)}` : '',
+    checklist.total ? `☑ ${checklist.done}/${checklist.total}` : '',
+    checklist.photos ? `📷 ${checklist.photos}` : '',
   ].filter(Boolean);
   const statusClass = {
     'Планируется': 'planned',
@@ -1140,11 +1270,216 @@ function workCard(work) {
     </article>`;
 }
 
+
+function renderWorkChecklistDraft() {
+  const checklist = state.workChecklistDraft || normalizeWorkChecklist({});
+  CHECKLIST_GROUPS.forEach(({ key }) => {
+    const list = $(`[data-checklist-list="${key}"]`);
+    if (!list) return;
+    const items = checklist[key] || [];
+    list.innerHTML = items.length
+      ? items
+          .map(
+            (item) => `
+              <div class="checklist-row ${item.done ? 'done' : ''}">
+                <label class="checklist-check">
+                  <input type="checkbox" data-check-toggle="${esc(key)}" data-check-id="${esc(item.id)}" ${item.done ? 'checked' : ''}>
+                  <span>${esc(item.text)}</span>
+                </label>
+                <button class="checklist-remove" data-check-remove="${esc(key)}" data-check-id="${esc(item.id)}" type="button" aria-label="Удалить пункт">×</button>
+              </div>`,
+          )
+          .join('')
+      : '<div class="checklist-empty">Пунктов пока нет</div>';
+  });
+
+  const measurements = $('#workMeasurements');
+  if (measurements && measurements.value !== checklist.measurements) {
+    measurements.value = checklist.measurements || '';
+  }
+
+  renderWorkPhotos();
+  renderChecklistProgress();
+}
+
+function renderChecklistProgress() {
+  const progress = workChecklistProgress(state.workChecklistDraft);
+  const label = $('#workChecklistProgress');
+  if (!label) return;
+  label.textContent = progress.total
+    ? `Выполнено ${progress.done} из ${progress.total} • фото ${progress.photos}`
+    : `Чек-лист пуст • фото ${progress.photos}`;
+}
+
+function addWorkChecklistItem(group) {
+  if (!CHECKLIST_GROUPS.some((item) => item.key === group)) return;
+  if (!state.workChecklistDraft) state.workChecklistDraft = normalizeWorkChecklist({});
+  const input = $(`[data-checklist-input="${group}"]`);
+  const text = toText(input?.value);
+  if (!text) {
+    input?.focus();
+    return;
+  }
+
+  state.workChecklistDraft[group].push({
+    id: createChecklistItemId(group),
+    text,
+    done: false,
+  });
+  if (input) input.value = '';
+  renderWorkChecklistDraft();
+  input?.focus();
+}
+
+function handleWorkChecklistChange(event) {
+  const toggle = event.target.closest('[data-check-toggle]');
+  if (!toggle || !state.workChecklistDraft) return;
+  const group = toggle.dataset.checkToggle;
+  const item = state.workChecklistDraft[group]?.find((entry) => entry.id === toggle.dataset.checkId);
+  if (!item) return;
+  item.done = toggle.checked;
+  renderWorkChecklistDraft();
+}
+
+function handleWorkChecklistClick(event) {
+  const remove = event.target.closest('[data-check-remove]');
+  if (remove && state.workChecklistDraft) {
+    const group = remove.dataset.checkRemove;
+    state.workChecklistDraft[group] = (state.workChecklistDraft[group] || []).filter(
+      (item) => item.id !== remove.dataset.checkId,
+    );
+    renderWorkChecklistDraft();
+    return;
+  }
+
+  const removePhoto = event.target.closest('[data-photo-remove]');
+  if (removePhoto && state.workChecklistDraft) {
+    state.workChecklistDraft.photos = state.workChecklistDraft.photos.filter(
+      (photo) => photo.id !== removePhoto.dataset.photoRemove,
+    );
+    renderWorkChecklistDraft();
+    return;
+  }
+
+  const openPhoto = event.target.closest('[data-photo-open]');
+  if (openPhoto && state.workChecklistDraft) {
+    const photo = state.workChecklistDraft.photos.find(
+      (item) => item.id === openPhoto.dataset.photoOpen,
+    );
+    if (photo?.dataUrl) window.open(photo.dataUrl, '_blank', 'noopener');
+  }
+}
+
+function renderWorkPhotos() {
+  const grid = $('#workPhotoGrid');
+  if (!grid) return;
+  const photos = state.workChecklistDraft?.photos || [];
+  grid.innerHTML = photos.length
+    ? photos
+        .map(
+          (photo) => `
+            <article class="work-photo-card">
+              <button class="work-photo-preview" data-photo-open="${esc(photo.id)}" type="button" aria-label="Открыть фото">
+                <img src="${esc(photo.dataUrl)}" alt="${esc(photo.name)}">
+              </button>
+              <div class="work-photo-meta">
+                <span title="${esc(photo.name)}">${esc(photo.name)}</span>
+                <button data-photo-remove="${esc(photo.id)}" type="button">Удалить</button>
+              </div>
+            </article>`,
+        )
+        .join('')
+    : '<div class="checklist-empty photo-empty">Фотографий пока нет</div>';
+
+  const addButton = $('#addWorkPhotoBtn');
+  if (addButton) addButton.classList.toggle('hidden', photos.length >= MAX_WORK_PHOTOS);
+}
+
+async function handleWorkPhotoFiles(event) {
+  const input = event.target;
+  const files = Array.from(input?.files || []).filter((file) => file.type.startsWith('image/'));
+  if (!files.length || !state.workChecklistDraft) {
+    if (input) input.value = '';
+    return;
+  }
+
+  const available = MAX_WORK_PHOTOS - state.workChecklistDraft.photos.length;
+  if (available <= 0) {
+    showToast(`Можно сохранить не более ${MAX_WORK_PHOTOS} фото`);
+    input.value = '';
+    return;
+  }
+
+  let added = 0;
+  for (const file of files.slice(0, available)) {
+    try {
+      const dataUrl = await compressWorkPhoto(file);
+      const currentSize = state.workChecklistDraft.photos.reduce(
+        (sum, photo) => sum + photo.dataUrl.length,
+        0,
+      );
+      if (
+        dataUrl.length > MAX_WORK_PHOTO_CHARS ||
+        currentSize + dataUrl.length > MAX_WORK_PHOTOS_TOTAL_CHARS
+      ) {
+        showToast('Фото слишком большое для памяти устройства');
+        continue;
+      }
+      state.workChecklistDraft.photos.push({
+        id: createChecklistItemId('photo'),
+        name: toText(file.name, `Фото ${state.workChecklistDraft.photos.length + 1}`),
+        dataUrl,
+        createdAt: new Date().toISOString(),
+      });
+      added += 1;
+    } catch (error) {
+      console.warn('GORN: не удалось обработать фотографию', error);
+      showToast('Не удалось добавить одно из фото');
+    }
+  }
+
+  input.value = '';
+  renderWorkChecklistDraft();
+  if (added) showToast(`Добавлено фото: ${added}`);
+}
+
+function compressWorkPhoto(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Не удалось прочитать файл'));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error('Не удалось открыть изображение'));
+      image.onload = () => {
+        const maxSide = 900;
+        const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+        const width = Math.max(1, Math.round(image.width * scale));
+        const height = Math.max(1, Math.round(image.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+        if (!context) {
+          reject(new Error('Canvas недоступен'));
+          return;
+        }
+        context.drawImage(image, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.68));
+      };
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function openWorkForm(workId = null) {
   const client = currentEditingClient();
   if (!client) return;
   const work = workId ? (client.works || []).find((item) => item.id === workId) : null;
   state.editingWorkId = work?.id || null;
+  state.workChecklistDraft = work
+    ? cloneWorkChecklist(work.checklist)
+    : normalizeWorkChecklist(createDefaultWorkChecklist());
 
   $('#workFormTitle').textContent = work ? 'Запись о работе' : 'Новая работа';
   $('#workTitle').value = work?.title || '';
@@ -1159,12 +1494,14 @@ function openWorkForm(workId = null) {
   $('#workEmpty').classList.add('hidden');
   $('#workTools')?.classList.add('hidden');
   $('#addWorkBtn').classList.add('hidden');
+  renderWorkChecklistDraft();
   $('#workTitle').focus();
   $('#workFormWrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function closeWorkForm() {
   state.editingWorkId = null;
+  state.workChecklistDraft = null;
   $('#workForm')?.reset();
   $('#workFormWrap')?.classList.add('hidden');
   $('#workList')?.classList.remove('hidden');
@@ -1191,6 +1528,10 @@ function saveWorkFromForm(event) {
   const existingIndex = works.findIndex((work) => work.id === state.editingWorkId);
   const existing = existingIndex >= 0 ? works[existingIndex] : null;
   const now = new Date().toISOString();
+  if (state.workChecklistDraft) {
+    state.workChecklistDraft.measurements = $('#workMeasurements')?.value || '';
+  }
+
   const work = normalizeWork(
     {
       id: existing?.id || createWorkId(),
@@ -1200,6 +1541,7 @@ function saveWorkFromForm(event) {
       status: $('#workStatus').value,
       amount: $('#workAmount').value,
       notes: $('#workNotes').value,
+      checklist: state.workChecklistDraft || normalizeWorkChecklist({}),
       createdAt: existing?.createdAt || now,
       updatedAt: now,
     },
@@ -1212,12 +1554,21 @@ function saveWorkFromForm(event) {
     works.unshift(work);
   }
 
+  const previousClient = state.clients[clientIndex];
   state.clients.splice(clientIndex, 1, {
     ...client,
     works,
     updatedAt: now,
   });
-  save();
+
+  if (!save()) {
+    state.clients.splice(clientIndex, 1, previousClient);
+    window.alert(
+      'Не удалось сохранить работу: память браузера заполнена.\nУдалите часть фотографий и повторите сохранение.',
+    );
+    return;
+  }
+
   closeWorkForm();
   showToast(existing ? 'Запись обновлена' : 'Работа добавлена');
 }

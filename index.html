@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="GORN">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="manifest.webmanifest?v=0.3.7">
+    <link rel="manifest" href="manifest.webmanifest?v=0.3.8">
     <link rel="icon" href="icon-192.png" type="image/png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <link rel="stylesheet" href="style.css?v=0.3.7">
+    <link rel="stylesheet" href="style.css?v=0.3.8">
     <title>GORN MASTER SYSTEM</title>
   </head>
   <body>
@@ -21,7 +21,7 @@
         <div>
           <h1>GORN</h1>
           <p>Профессиональный помощник печника</p>
-          <div id="versionLine" class="version-line">v0.3.7 • Stable • 16.07.2026</div>
+          <div id="versionLine" class="version-line">v0.3.8 • Stable • 16.07.2026</div>
         </div>
       </div>
       <input id="search" type="search" placeholder="Поиск: дымит, кирпич, чистка...">
@@ -267,6 +267,62 @@
                   <textarea id="workNotes" rows="5" maxlength="4000" placeholder="Объём работ, материалы, результат, что осталось сделать..."></textarea>
                 </label>
 
+                <section id="workChecklistSection" class="work-checklist-panel" aria-labelledby="workChecklistTitle">
+                  <div class="work-checklist-header">
+                    <div>
+                      <h4 id="workChecklistTitle">Чек-лист выезда</h4>
+                      <p>Список сохраняется внутри этой работы</p>
+                    </div>
+                    <strong id="workChecklistProgress">Чек-лист пуст</strong>
+                  </div>
+
+                  <div class="checklist-columns">
+                    <section class="checklist-group">
+                      <h5>Что взять с собой</h5>
+                      <div class="checklist-add-row">
+                        <input data-checklist-input="take" type="text" maxlength="180" placeholder="Добавить пункт">
+                        <button data-checklist-add="take" type="button">Добавить</button>
+                      </div>
+                      <div class="checklist-list" data-checklist-list="take"></div>
+                    </section>
+
+                    <section class="checklist-group">
+                      <h5>Инструменты</h5>
+                      <div class="checklist-add-row">
+                        <input data-checklist-input="tools" type="text" maxlength="180" placeholder="Добавить инструмент">
+                        <button data-checklist-add="tools" type="button">Добавить</button>
+                      </div>
+                      <div class="checklist-list" data-checklist-list="tools"></div>
+                    </section>
+
+                    <section class="checklist-group">
+                      <h5>Материалы</h5>
+                      <div class="checklist-add-row">
+                        <input data-checklist-input="materials" type="text" maxlength="180" placeholder="Добавить материал">
+                        <button data-checklist-add="materials" type="button">Добавить</button>
+                      </div>
+                      <div class="checklist-list" data-checklist-list="materials"></div>
+                    </section>
+                  </div>
+
+                  <label class="form-field checklist-measurements">
+                    <span>Замеры на объекте</span>
+                    <textarea id="workMeasurements" rows="5" maxlength="5000" placeholder="Размеры топки, дымохода, портала, сечения каналов и другие замеры..."></textarea>
+                  </label>
+
+                  <section class="work-photos-section">
+                    <div class="work-photos-heading">
+                      <div>
+                        <h5>Фотографии объекта</h5>
+                        <p>До 6 фотографий. Снимки сжимаются и сохраняются на этом устройстве.</p>
+                      </div>
+                      <label id="addWorkPhotoBtn" class="secondary-btn photo-add-btn" for="workPhotoInput">+ Добавить фото</label>
+                    </div>
+                    <input id="workPhotoInput" type="file" accept="image/*" multiple hidden>
+                    <div id="workPhotoGrid" class="work-photo-grid"></div>
+                  </section>
+                </section>
+
                 <div class="client-form-actions">
                   <button class="primary-btn" type="submit">Сохранить работу</button>
                   <button id="deleteWorkBtn" class="danger-btn hidden" type="button">Удалить запись</button>
@@ -289,20 +345,20 @@
           <img src="icon-192.png" alt="GORN">
           <h2>GORN MASTER SYSTEM</h2>
           <p>Профессиональный помощник печника</p>
-          <div id="aboutVersion" class="about-version">Версия 0.3.7 Stable</div>
+          <div id="aboutVersion" class="about-version">Версия 0.3.8 Stable</div>
           <p id="aboutUpdated">Обновлено: 16.07.2026</p>
           <h3>Что нового</h3>
           <ul>
-            <li>Отдельный экран «План» для всех работ и выездов</li>
-            <li>Работы на сегодня, просроченные и ближайшие задачи</li>
-            <li>Быстрый переход к карточке клиента и звонок</li>
-            <li>Сумма запланированных и завершённых работ</li>
-            <li>Поиск по клиентам, адресам и видам работ в плане</li>
+            <li>Чек-лист выезда внутри каждой работы клиента</li>
+            <li>Отдельные списки: что взять, инструменты и материалы</li>
+            <li>Отметки выполнения и общий прогресс подготовки</li>
+            <li>Замеры на объекте сохраняются вместе с работой</li>
+            <li>До 6 сжатых фотографий объекта в каждой записи</li>
           </ul>
 
           <section class="backup-panel" aria-labelledby="backupTitle">
             <h3 id="backupTitle">Резервная копия данных</h3>
-            <p class="backup-description">Сохраняет клиентов, историю работ, избранное и недавние карточки в одном файле.</p>
+            <p class="backup-description">Сохраняет клиентов, работы, чек-листы, фотографии, избранное и недавние карточки в одном файле.</p>
             <div id="backupStats" class="backup-stats">В текущей базе: 0 клиентов, 0 работ</div>
             <div class="backup-actions">
               <button id="exportBackupBtn" class="primary-btn" type="button">⬇ Экспортировать базу</button>
@@ -327,6 +383,6 @@
     </nav>
 
     <div id="toast" class="toast">Скопировано</div>
-    <script src="app.js?v=0.3.7"></script>
+    <script src="app.js?v=0.3.8"></script>
   </body>
 </html>
