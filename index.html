@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="GORN">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="manifest.webmanifest?v=0.3.2">
+    <link rel="manifest" href="manifest.webmanifest?v=0.3.3">
     <link rel="icon" href="icon-192.png" type="image/png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <link rel="stylesheet" href="style.css?v=0.3.2">
+    <link rel="stylesheet" href="style.css?v=0.3.3">
     <title>GORN MASTER SYSTEM</title>
   </head>
   <body>
@@ -21,7 +21,7 @@
         <div>
           <h1>GORN</h1>
           <p>Профессиональный помощник печника</p>
-          <div id="versionLine" class="version-line">v0.3.2 • Stable • 16.07.2026</div>
+          <div id="versionLine" class="version-line">v0.3.3 • Stable • 16.07.2026</div>
         </div>
       </div>
       <input id="search" type="search" placeholder="Поиск: дымит, кирпич, чистка...">
@@ -48,21 +48,75 @@
         <div id="cardContent"></div>
       </section>
 
+
+      <section id="clientsView" class="hidden">
+        <div class="clients-header">
+          <div>
+            <div class="section-title clients-section-title">КЛИЕНТЫ <span id="clientsCountBadge" class="count-badge"></span></div>
+            <div class="clients-storage-note">Данные сохраняются только на этом устройстве</div>
+          </div>
+          <button id="newClientBtn" class="primary-btn compact-btn" type="button">+ Новый клиент</button>
+        </div>
+
+        <div id="clientFormWrap" class="hidden">
+          <form id="clientForm" class="client-form">
+            <div class="client-form-header">
+              <h2 id="clientFormTitle">Новый клиент</h2>
+              <button id="closeClientFormBtn" class="secondary-btn" type="button">Закрыть</button>
+            </div>
+
+            <label class="form-field">
+              <span>Имя клиента *</span>
+              <input id="clientName" type="text" maxlength="120" autocomplete="name" required>
+            </label>
+
+            <div class="form-grid">
+              <label class="form-field">
+                <span>Телефон</span>
+                <input id="clientPhone" type="tel" maxlength="60" autocomplete="tel" inputmode="tel">
+              </label>
+              <label class="form-field">
+                <span>Дата обращения</span>
+                <input id="clientDate" type="date">
+              </label>
+            </div>
+
+            <label class="form-field">
+              <span>Адрес объекта</span>
+              <input id="clientAddress" type="text" maxlength="240" autocomplete="street-address">
+            </label>
+
+            <label class="form-field">
+              <span>Заметки</span>
+              <textarea id="clientNotes" rows="6" maxlength="4000" placeholder="Что нужно сделать, особенности объекта, договорённости..."></textarea>
+            </label>
+
+            <div class="client-form-actions">
+              <button class="primary-btn" type="submit">Сохранить клиента</button>
+              <button id="deleteClientBtn" class="danger-btn hidden" type="button">Удалить</button>
+            </div>
+          </form>
+        </div>
+
+        <div id="clientsList" class="client-list"></div>
+        <div id="clientsEmpty" class="empty hidden">Клиентов пока нет</div>
+      </section>
+
       <section id="aboutView" class="hidden">
         <button id="aboutBackBtn" class="secondary-btn" type="button">← Назад</button>
         <div class="about-card">
           <img src="icon-192.png" alt="GORN">
           <h2>GORN MASTER SYSTEM</h2>
           <p>Профессиональный помощник печника</p>
-          <div id="aboutVersion" class="about-version">Версия 0.3.2 Stable</div>
+          <div id="aboutVersion" class="about-version">Версия 0.3.3 Stable</div>
           <p id="aboutUpdated">Обновлено: 16.07.2026</p>
           <h3>Что нового</h3>
           <ul>
-            <li>Поиск по нескольким словам и всем разделам карточки</li>
-            <li>Умная обработка словоформ и букв «е/ё»</li>
-            <li>Более подходящие результаты показываются первыми</li>
-            <li>Возврат из карточки сохраняет поиск, категорию и режим</li>
-            <li>Исправлена навигация внутри раздела «Избранное»</li>
+            <li>Добавлен отдельный раздел «Клиенты»</li>
+            <li>Имя, телефон, адрес объекта и дата обращения</li>
+            <li>Заметки и редактирование карточки клиента</li>
+            <li>Поиск клиентов по имени, телефону, адресу и заметкам</li>
+            <li>Данные сохраняются локально на текущем устройстве</li>
           </ul>
           <div class="slogan">Там, где рождается тепло дома.</div>
         </div>
@@ -72,10 +126,11 @@
     <nav class="bottom-nav">
       <button data-nav="home" class="active" type="button">⌂<span>Главная</span></button>
       <button data-nav="favorites" type="button">★<span>Избранное</span></button>
+      <button data-nav="clients" type="button">👤<span>Клиенты</span></button>
       <button data-nav="about" type="button">ⓘ<span>О системе</span></button>
     </nav>
 
     <div id="toast" class="toast">Скопировано</div>
-    <script src="app.js?v=0.3.2"></script>
+    <script src="app.js?v=0.3.3"></script>
   </body>
 </html>

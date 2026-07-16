@@ -1,5 +1,5 @@
 const APP_META = {
-  version: '0.3.2',
+  version: '0.3.3',
   status: 'Stable',
   updated: '16.07.2026',
 };
@@ -20,8 +20,12 @@ const state = {
   category: 'Все',
   current: null,
   mode: 'home',
+  cardSearch: '',
+  clientSearch: '',
+  editingClientId: null,
   favorites: readStoredArray('gornFavorites'),
   recent: readStoredArray('gornRecent'),
+  clients: readStoredClients(),
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -35,6 +39,38 @@ function readStoredArray(key) {
     localStorage.removeItem(key);
     return [];
   }
+}
+
+function readStoredClients() {
+  try {
+    const value = JSON.parse(localStorage.getItem('gornClients') || '[]');
+    if (!Array.isArray(value)) return [];
+    return value.map((client, index) => normalizeClient(client, index));
+  } catch (error) {
+    console.warn('GORN: база клиентов была сброшена', error);
+    localStorage.removeItem('gornClients');
+    return [];
+  }
+}
+
+function localDateISO(date = new Date()) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+function normalizeClient(rawClient, index = 0) {
+  const source = rawClient && typeof rawClient === 'object' ? rawClient : {};
+  const createdAt = toText(source.createdAt, new Date().toISOString());
+  return {
+    id: toText(source.id, `CLIENT-${index + 1}-${Date.now()}`),
+    name: toText(source.name, 'Без имени'),
+    phone: toText(source.phone),
+    address: toText(source.address),
+    notes: toText(source.notes),
+    date: toText(source.date, localDateISO()),
+    createdAt,
+    updatedAt: toText(source.updatedAt, createdAt),
+  };
 }
 
 function toText(value, fallback = '') {
@@ -174,12 +210,25 @@ function renderVersion() {
 
 function bindEvents() {
   const search = $('#search');
-  search?.addEventListener('input', () => renderHome());
-  search?.addEventListener('search', () => renderHome());
+  const handleSearch = () => {
+    if (state.mode === 'clients') {
+      state.clientSearch = search?.value || '';
+      renderClients();
+      return;
+    }
+
+    if (state.mode === 'home' || state.mode === 'favorites') {
+      state.cardSearch = search?.value || '';
+      renderHome();
+    }
+  };
+
+  search?.addEventListener('input', handleSearch);
+  search?.addEventListener('search', handleSearch);
   search?.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || !search.value) return;
     search.value = '';
-    renderHome();
+    handleSearch();
   });
 
   $('#backBtn')?.addEventListener('click', goBack);
@@ -189,6 +238,11 @@ function bindEvents() {
     toggleFavorite(state.current.id);
     updateFavoriteButton();
   });
+
+  $('#newClientBtn')?.addEventListener('click', () => openClientForm());
+  $('#closeClientFormBtn')?.addEventListener('click', closeClientForm);
+  $('#clientForm')?.addEventListener('submit', saveClientFromForm);
+  $('#deleteClientBtn')?.addEventListener('click', deleteEditingClient);
 
   document.querySelectorAll('[data-nav]').forEach((button) => {
     button.addEventListener('click', () => navigate(button.dataset.nav));
@@ -238,6 +292,11 @@ function navigate(where, pushHistory = true) {
     return;
   }
 
+  if (where === 'clients') {
+    showClientsView(pushHistory);
+    return;
+  }
+
   const mode = where === 'favorites' ? 'favorites' : 'home';
   showListView(mode, pushHistory);
 }
@@ -245,7 +304,9 @@ function navigate(where, pushHistory = true) {
 function showListView(mode = state.mode, pushHistory = false) {
   state.mode = mode === 'favorites' ? 'favorites' : 'home';
   state.current = null;
+  state.editingClientId = null;
   setActiveNav(state.mode);
+  setSearchContext('cards');
   showOnly('homeView');
   renderCategories();
   renderHome();
@@ -253,6 +314,32 @@ function showListView(mode = state.mode, pushHistory = false) {
   if (pushHistory) {
     history.pushState({ view: state.mode }, '', window.location.href);
   }
+}
+
+function showClientsView(pushHistory = false) {
+  state.mode = 'clients';
+  state.current = null;
+  state.editingClientId = null;
+  setActiveNav('clients');
+  setSearchContext('clients');
+  showOnly('clientsView');
+  closeClientForm();
+  renderClients();
+
+  if (pushHistory) {
+    history.pushState({ view: 'clients' }, '', window.location.href);
+  }
+}
+
+function setSearchContext(context) {
+  const search = $('#search');
+  if (!search) return;
+
+  const isClients = context === 'clients';
+  search.value = isClients ? state.clientSearch : state.cardSearch;
+  search.placeholder = isClients
+    ? 'Поиск клиентов: имя, телефон, адрес...'
+    : 'Поиск: дымит, кирпич, чистка...';
 }
 
 function setActiveNav(where) {
@@ -274,11 +361,16 @@ function restoreHistoryView(historyState) {
     return;
   }
 
+  if (view === 'clients') {
+    showClientsView(false);
+    return;
+  }
+
   showListView(view === 'favorites' ? 'favorites' : 'home', false);
 }
 
 function showOnly(id) {
-  ['homeView', 'cardView', 'aboutView'].forEach((viewId) => {
+  ['homeView', 'cardView', 'clientsView', 'aboutView'].forEach((viewId) => {
     $(`#${viewId}`).classList.toggle('hidden', viewId !== id);
   });
   window.scrollTo({ top: 0, behavior: 'auto' });
@@ -288,9 +380,154 @@ function save() {
   try {
     localStorage.setItem('gornFavorites', JSON.stringify(state.favorites));
     localStorage.setItem('gornRecent', JSON.stringify(state.recent));
+    localStorage.setItem('gornClients', JSON.stringify(state.clients));
   } catch (error) {
     console.warn('GORN: не удалось сохранить локальные данные', error);
   }
+}
+
+
+function renderClients() {
+  const query = normalizeSearchText(state.clientSearch);
+  const tokens = query.split(' ').filter(Boolean);
+  const clients = [...state.clients]
+    .filter((client) => {
+      if (!tokens.length) return true;
+      const text = [client.name, client.phone, client.address, client.notes, client.date].join(' ');
+      return fieldContainsTokens(text, tokens);
+    })
+    .sort(
+      (a, b) =>
+        String(b.date).localeCompare(String(a.date)) ||
+        String(b.updatedAt).localeCompare(String(a.updatedAt)),
+    );
+
+  $('#clientsCountBadge').textContent = `(${clients.length})`;
+  $('#clientsList').innerHTML = clients.map(clientCard).join('');
+  $('#clientsEmpty').textContent = query ? 'Ничего не найдено' : 'Клиентов пока нет';
+  $('#clientsEmpty').classList.toggle('hidden', clients.length > 0);
+
+  document.querySelectorAll('[data-client-id]').forEach((element) => {
+    element.onclick = () => openClientForm(element.dataset.clientId);
+  });
+
+  document.querySelectorAll('.client-call').forEach((link) => {
+    link.onclick = (event) => event.stopPropagation();
+  });
+}
+
+function clientCard(client) {
+  const phoneHref = client.phone.replace(/[^\d+]/g, '');
+  const details = [
+    client.phone ? `☎ ${esc(client.phone)}` : '',
+    client.address ? `📍 ${esc(client.address)}` : '',
+    client.date ? `🗓 ${esc(formatClientDate(client.date))}` : '',
+  ].filter(Boolean);
+
+  return `
+    <article class="client-card" data-client-id="${esc(client.id)}">
+      <div class="client-card-main">
+        <div class="client-avatar">👤</div>
+        <div class="client-card-content">
+          <div class="client-name">${esc(client.name)}</div>
+          <div class="client-details">${details.join('<span>•</span>')}</div>
+          ${client.notes ? `<div class="client-notes-preview">${esc(client.notes)}</div>` : ''}
+        </div>
+      </div>
+      <div class="client-card-actions">
+        ${phoneHref ? `<a class="client-call" href="tel:${esc(phoneHref)}">Позвонить</a>` : ''}
+        <button class="client-open-btn" type="button">Открыть</button>
+      </div>
+    </article>`;
+}
+
+function openClientForm(clientId = null) {
+  const client = clientId ? state.clients.find((item) => item.id === clientId) : null;
+  state.editingClientId = client?.id || null;
+
+  $('#clientFormTitle').textContent = client ? 'Карточка клиента' : 'Новый клиент';
+  $('#clientName').value = client?.name || '';
+  $('#clientPhone').value = client?.phone || '';
+  $('#clientAddress').value = client?.address || '';
+  $('#clientDate').value = client?.date || localDateISO();
+  $('#clientNotes').value = client?.notes || '';
+  $('#deleteClientBtn').classList.toggle('hidden', !client);
+  $('#clientFormWrap').classList.remove('hidden');
+  $('#clientsList').classList.add('hidden');
+  $('#clientsEmpty').classList.add('hidden');
+  $('#newClientBtn').classList.add('hidden');
+  $('#clientName').focus();
+  window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+function closeClientForm() {
+  state.editingClientId = null;
+  $('#clientForm')?.reset();
+  $('#clientFormWrap')?.classList.add('hidden');
+  $('#clientsList')?.classList.remove('hidden');
+  $('#newClientBtn')?.classList.remove('hidden');
+  if (state.mode === 'clients') renderClients();
+}
+
+function saveClientFromForm(event) {
+  event.preventDefault();
+
+  const name = toText($('#clientName').value);
+  if (!name) {
+    $('#clientName').focus();
+    showToast('Укажите имя клиента');
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const existingIndex = state.clients.findIndex((client) => client.id === state.editingClientId);
+  const existing = existingIndex >= 0 ? state.clients[existingIndex] : null;
+  const client = normalizeClient(
+    {
+      id: existing?.id || createClientId(),
+      name,
+      phone: $('#clientPhone').value,
+      address: $('#clientAddress').value,
+      date: $('#clientDate').value || localDateISO(),
+      notes: $('#clientNotes').value,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    },
+    state.clients.length,
+  );
+
+  if (existingIndex >= 0) {
+    state.clients.splice(existingIndex, 1, client);
+  } else {
+    state.clients.unshift(client);
+  }
+
+  save();
+  closeClientForm();
+  showToast(existing ? 'Карточка обновлена' : 'Клиент сохранён');
+}
+
+function deleteEditingClient() {
+  const client = state.clients.find((item) => item.id === state.editingClientId);
+  if (!client) return;
+  if (!window.confirm(`Удалить клиента «${client.name}»?`)) return;
+
+  state.clients = state.clients.filter((item) => item.id !== client.id);
+  save();
+  closeClientForm();
+  showToast('Клиент удалён');
+}
+
+function createClientId() {
+  if (globalThis.crypto?.randomUUID) return `CLIENT-${globalThis.crypto.randomUUID()}`;
+  return `CLIENT-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function formatClientDate(value) {
+  if (!value) return '';
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('ru-RU');
 }
 
 function renderCategories() {
@@ -387,7 +624,7 @@ function searchScore(card, rawQuery) {
 }
 
 function filtered() {
-  const query = $('#search').value;
+  const query = state.cardSearch;
   const favoritesOnly = state.mode === 'favorites';
 
   return state.cards
@@ -570,14 +807,22 @@ async function copyText(id, button) {
 
   button.classList.add('done');
   button.textContent = '✓ Скопировано';
-  const toast = $('#toast');
-  toast.classList.add('show');
+  showToast('Скопировано');
 
   setTimeout(() => {
     button.classList.remove('done');
     button.textContent = '📋 Копировать';
-    toast.classList.remove('show');
   }, 1100);
+}
+
+let toastTimer;
+function showToast(message) {
+  const toast = $('#toast');
+  if (!toast) return;
+  toast.textContent = message;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 1400);
 }
 
 function esc(value) {
