@@ -1,5 +1,5 @@
 const APP_META = {
-  version: '0.3.9',
+  version: '0.4.0',
   status: 'Stable',
   updated: '16.07.2026',
 };
@@ -472,6 +472,19 @@ function bindEvents() {
   });
 
   $('#clientsShortcutBtn')?.addEventListener('click', () => navigate('clients'));
+
+  $('#dashboardNewClientBtn')?.addEventListener('click', () => {
+    showClientsView(true);
+    openClientForm();
+  });
+  $('#dashboardPlanBtn')?.addEventListener('click', () => navigate('plan'));
+  $('#dashboardClientsBtn')?.addEventListener('click', () => navigate('clients'));
+  $('#dashboardBackupBtn')?.addEventListener('click', exportBackup);
+  $('#dashboardAttentionPlanBtn')?.addEventListener('click', () => navigate('plan'));
+  $('#dashboardRefreshBtn')?.addEventListener('click', () => {
+    renderDashboard();
+    showToast('Обзор обновлён');
+  });
 
   $('#newClientBtn')?.addEventListener('click', () => openClientForm());
 
@@ -2077,8 +2090,136 @@ function filtered() {
     .map(({ card }) => card);
 }
 
+
+function dashboardMetrics() {
+  const today = localDateISO();
+  const entries = collectPlanEntries();
+  const activeClientStatuses = new Set(['Новый', 'Связаться', 'Выезд назначен', 'В работе']);
+  const activeEntries = entries.filter((entry) => isActivePlanWork(entry.work));
+  const plannedEntries = entries.filter((entry) => entry.work.status === 'Планируется');
+  const completedEntries = entries.filter((entry) => entry.work.status === 'Завершено');
+
+  return {
+    clientsTotal: state.clients.length,
+    activeClients: state.clients.filter((client) => activeClientStatuses.has(client.status)).length,
+    todayCount: activeEntries.filter((entry) => entry.work.date === today).length,
+    overdueCount: activeEntries.filter((entry) => entry.work.date && entry.work.date < today).length,
+    plannedWorks: plannedEntries.length,
+    plannedAmount: plannedEntries.reduce(
+      (total, entry) => total + parseAmountNumber(entry.work.amount),
+      0,
+    ),
+    completedWorks: completedEntries.length,
+    completedAmount: completedEntries.reduce(
+      (total, entry) => total + parseAmountNumber(entry.work.amount),
+      0,
+    ),
+  };
+}
+
+function collectDashboardAttention() {
+  const today = localDateISO();
+  const workItems = collectPlanEntries()
+    .filter((entry) => isActivePlanWork(entry.work))
+    .filter((entry) => entry.work.date && entry.work.date <= today)
+    .map((entry) => ({
+      type: entry.work.date < today ? 'overdue' : 'today',
+      priority: entry.work.date < today ? 0 : 1,
+      clientId: entry.clientId,
+      clientName: entry.clientName,
+      phone: entry.clientPhone,
+      title: entry.work.title,
+      date: entry.work.date,
+      address: entry.work.address || entry.clientAddress,
+      amount: entry.work.amount,
+      updatedAt: entry.work.updatedAt,
+    }));
+
+  const clientsWithFollowUp = state.clients
+    .filter((client) => client.status === 'Связаться')
+    .map((client) => ({
+      type: 'contact',
+      priority: 2,
+      clientId: client.id,
+      clientName: client.name,
+      phone: client.phone,
+      title: 'Связаться с клиентом',
+      date: client.date,
+      address: client.address,
+      amount: '',
+      updatedAt: client.updatedAt,
+    }));
+
+  return [...workItems, ...clientsWithFollowUp]
+    .sort(
+      (a, b) =>
+        a.priority - b.priority ||
+        String(a.date || '').localeCompare(String(b.date || '')) ||
+        String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')),
+    )
+    .slice(0, 5);
+}
+
+function dashboardAttentionCard(item) {
+  const phoneHref = toText(item.phone).replace(/[^\d+]/g, '');
+  const badge = {
+    overdue: ['Просрочено', 'overdue'],
+    today: ['Сегодня', 'today'],
+    contact: ['Связаться', 'contact'],
+  }[item.type] || ['Задача', 'contact'];
+
+  const details = [
+    item.clientName ? `👤 ${esc(item.clientName)}` : '',
+    item.date ? `🗓 ${esc(formatClientDate(item.date))}` : '',
+    item.address ? `📍 ${esc(item.address)}` : '',
+    item.amount ? `💰 ${esc(item.amount)}` : '',
+  ].filter(Boolean);
+
+  return `
+    <article class="dashboard-attention-card">
+      <div class="dashboard-attention-main">
+        <div class="dashboard-attention-title-row">
+          <div class="dashboard-attention-title">${esc(item.title)}</div>
+          <span class="dashboard-attention-badge ${badge[1]}">${badge[0]}</span>
+        </div>
+        <div class="dashboard-attention-details">${details.join('<span>•</span>')}</div>
+      </div>
+      <div class="dashboard-attention-actions">
+        ${phoneHref ? `<a href="tel:${esc(phoneHref)}">Позвонить</a>` : ''}
+        <button data-dashboard-client-id="${esc(item.clientId)}" type="button">Открыть</button>
+      </div>
+    </article>`;
+}
+
+function renderDashboard() {
+  const dashboard = $('.home-dashboard');
+  if (!dashboard) return;
+
+  const metrics = dashboardMetrics();
+  $('#dashboardClientsTotal').textContent = String(metrics.clientsTotal);
+  $('#dashboardActiveClients').textContent = String(metrics.activeClients);
+  $('#dashboardTodayCount').textContent = String(metrics.todayCount);
+  $('#dashboardOverdueCount').textContent = String(metrics.overdueCount);
+  $('#dashboardPlannedAmount').textContent = formatRubles(metrics.plannedAmount);
+  $('#dashboardPlannedWorks').textContent = String(metrics.plannedWorks);
+  $('#dashboardCompletedAmount').textContent = formatRubles(metrics.completedAmount);
+  $('#dashboardCompletedWorks').textContent = String(metrics.completedWorks);
+
+  const attention = collectDashboardAttention();
+  const list = $('#dashboardAttentionList');
+  const empty = $('#dashboardAttentionEmpty');
+
+  if (list) list.innerHTML = attention.map(dashboardAttentionCard).join('');
+  if (empty) empty.classList.toggle('hidden', attention.length > 0);
+
+  document.querySelectorAll('[data-dashboard-client-id]').forEach((button) => {
+    button.onclick = () => openClientFromPlan(button.dataset.dashboardClientId);
+  });
+}
+
 function renderHome() {
   const list = filtered();
+  renderDashboard();
   renderQuick();
   $('#countBadge').textContent = `(${list.length})`;
   $('#list').innerHTML = list.map(listCard).join('');

@@ -1,11 +1,11 @@
-const CACHE_NAME = 'gorn-v0.3.9-hotfix1';
+const CACHE_NAME = 'gorn-v0.4.0';
 const APP_ASSETS = [
   './',
   './index.html',
-  './style.css?v=0.3.9',
-  './app.js?v=0.3.9',
-  './data/cards.json?v=0.3.9',
-  './manifest.webmanifest?v=0.3.9',
+  './style.css?v=0.4.0',
+  './app.js?v=0.4.0',
+  './data/cards.json?v=0.4.0',
+  './manifest.webmanifest?v=0.4.0',
   './apple-touch-icon.png',
   './icon-192.png',
   './icon-512.png',

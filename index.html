@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="GORN">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="manifest.webmanifest?v=0.3.9">
+    <link rel="manifest" href="manifest.webmanifest?v=0.4.0">
     <link rel="icon" href="icon-192.png" type="image/png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <link rel="stylesheet" href="style.css?v=0.3.9">
+    <link rel="stylesheet" href="style.css?v=0.4.0">
     <title>GORN MASTER SYSTEM</title>
   </head>
   <body>
@@ -21,7 +21,7 @@
         <div>
           <h1>GORN</h1>
           <p>Профессиональный помощник печника</p>
-          <div id="versionLine" class="version-line">v0.3.9 • Stable • 16.07.2026</div>
+          <div id="versionLine" class="version-line">v0.4.0 • Stable • 16.07.2026</div>
         </div>
       </div>
       <input id="search" type="search" placeholder="Поиск: дымит, кирпич, чистка...">
@@ -29,13 +29,60 @@
 
     <main class="container">
       <section id="homeView">
-        <button id="clientsShortcutBtn" class="clients-shortcut" type="button" aria-label="Открыть клиентов">
-          <span class="clients-shortcut-icon">👤</span>
-          <span class="clients-shortcut-text"><strong>Клиенты</strong><small>Карточки, телефоны и заметки</small></span>
-          <span class="clients-shortcut-arrow">›</span>
-        </button>
 
-        <div class="section-title">КАТЕГОРИИ</div>
+        <section class="home-dashboard" aria-labelledby="dashboardTitle">
+          <div class="dashboard-header">
+            <div>
+              <div id="dashboardTitle" class="section-title dashboard-title">ОБЗОР РАБОТЫ</div>
+              <div class="dashboard-subtitle">Клиенты, выезды, деньги и задачи, требующие внимания</div>
+            </div>
+            <button id="dashboardRefreshBtn" class="secondary-btn dashboard-refresh" type="button">↻ Обновить</button>
+          </div>
+
+          <div class="dashboard-summary-grid">
+            <article class="dashboard-summary-card clients">
+              <span>Клиенты</span>
+              <strong id="dashboardClientsTotal">0</strong>
+              <small><b id="dashboardActiveClients">0</b> активных</small>
+            </article>
+            <article class="dashboard-summary-card today">
+              <span>Сегодня</span>
+              <strong id="dashboardTodayCount">0</strong>
+              <small><b id="dashboardOverdueCount">0</b> просрочено</small>
+            </article>
+            <article class="dashboard-summary-card planned">
+              <span>Запланировано</span>
+              <strong id="dashboardPlannedAmount">0 ₽</strong>
+              <small><b id="dashboardPlannedWorks">0</b> работ</small>
+            </article>
+            <article class="dashboard-summary-card completed">
+              <span>Завершено</span>
+              <strong id="dashboardCompletedAmount">0 ₽</strong>
+              <small><b id="dashboardCompletedWorks">0</b> работ</small>
+            </article>
+          </div>
+
+          <div class="dashboard-actions" aria-label="Быстрые действия">
+            <button id="dashboardNewClientBtn" class="dashboard-action primary" type="button">+ Новый клиент</button>
+            <button id="dashboardPlanBtn" class="dashboard-action" type="button">🗓 Открыть план</button>
+            <button id="dashboardClientsBtn" class="dashboard-action" type="button">👤 Все клиенты</button>
+            <button id="dashboardBackupBtn" class="dashboard-action" type="button">⬇ Резервная копия</button>
+          </div>
+
+          <section class="dashboard-attention" aria-labelledby="dashboardAttentionTitle">
+            <div class="dashboard-attention-heading">
+              <div>
+                <h2 id="dashboardAttentionTitle">Требует внимания</h2>
+                <p>Просроченные и сегодняшние работы, а также клиенты, которым нужно ответить</p>
+              </div>
+              <button id="dashboardAttentionPlanBtn" class="secondary-btn" type="button">Открыть план</button>
+            </div>
+            <div id="dashboardAttentionList" class="dashboard-attention-list"></div>
+            <div id="dashboardAttentionEmpty" class="dashboard-attention-empty">Срочных задач нет</div>
+          </section>
+        </section>
+
+<div class="section-title">КАТЕГОРИИ</div>
         <div id="categories" class="categories"></div>
 
         <div class="section-title">БЫСТРЫЙ ДОСТУП</div>
@@ -420,15 +467,15 @@
           <img src="icon-192.png" alt="GORN">
           <h2>GORN MASTER SYSTEM</h2>
           <p>Профессиональный помощник печника</p>
-          <div id="aboutVersion" class="about-version">Версия 0.3.9 Stable</div>
+          <div id="aboutVersion" class="about-version">Версия 0.4.0 Stable</div>
           <p id="aboutUpdated">Обновлено: 16.07.2026</p>
           <h3>Что нового</h3>
           <ul>
-            <li>Смета внутри каждой работы клиента</li>
-            <li>Отдельные списки работ и материалов</li>
-            <li>Количество, цена и автоматический итог</li>
-            <li>Предоплата и автоматический расчёт остатка</li>
-            <li>Готовый текст расчёта с копированием для клиента</li>
+            <li>Общий обзор клиентов, работ, выездов и денег на главной</li>
+            <li>Быстрые действия: новый клиент, план, база клиентов и резервная копия</li>
+            <li>Блок «Требует внимания» для сегодняшних, просроченных задач и обратных звонков</li>
+            <li>Сохранены сметы, чек-листы, фотографии, план и история работ</li>
+            <li>Улучшена адаптация главного экрана для телефона и планшета</li>
           </ul>
 
           <section class="backup-panel" aria-labelledby="backupTitle">
@@ -458,6 +505,6 @@
     </nav>
 
     <div id="toast" class="toast">Скопировано</div>
-    <script src="app.js?v=0.3.9"></script>
+    <script src="app.js?v=0.4.0"></script>
   </body>
 </html>
