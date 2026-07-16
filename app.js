@@ -239,6 +239,8 @@ function bindEvents() {
     updateFavoriteButton();
   });
 
+  $('#clientsShortcutBtn')?.addEventListener('click', () => navigate('clients'));
+
   $('#newClientBtn')?.addEventListener('click', () => openClientForm());
   $('#closeClientFormBtn')?.addEventListener('click', closeClientForm);
   $('#clientForm')?.addEventListener('submit', saveClientFromForm);

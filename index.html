@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="GORN">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="manifest.webmanifest?v=0.3.3">
+    <link rel="manifest" href="manifest.webmanifest?v=0.3.3-hotfix1">
     <link rel="icon" href="icon-192.png" type="image/png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <link rel="stylesheet" href="style.css?v=0.3.3">
+    <link rel="stylesheet" href="style.css?v=0.3.3-hotfix1">
     <title>GORN MASTER SYSTEM</title>
   </head>
   <body>
@@ -29,6 +29,12 @@
 
     <main class="container">
       <section id="homeView">
+        <button id="clientsShortcutBtn" class="clients-shortcut" type="button" aria-label="Открыть клиентов">
+          <span class="clients-shortcut-icon">👤</span>
+          <span class="clients-shortcut-text"><strong>Клиенты</strong><small>Карточки, телефоны и заметки</small></span>
+          <span class="clients-shortcut-arrow">›</span>
+        </button>
+
         <div class="section-title">КАТЕГОРИИ</div>
         <div id="categories" class="categories"></div>
 
@@ -131,6 +137,6 @@
     </nav>
 
     <div id="toast" class="toast">Скопировано</div>
-    <script src="app.js?v=0.3.3"></script>
+    <script src="app.js?v=0.3.3-hotfix1"></script>
   </body>
 </html>
