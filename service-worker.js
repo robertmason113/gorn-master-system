@@ -1,19 +1,24 @@
-const CACHE_NAME = 'gorn-v0.4.0';
-const APP_ASSETS = [
+const APP_VERSION = '0.9.0';
+const CACHE_NAME = `gorn-v${APP_VERSION}-rc1`;
+const APP_SHELL = [
   './',
   './index.html',
-  './style.css?v=0.4.0',
-  './app.js?v=0.4.0',
-  './data/cards.json?v=0.4.0',
-  './manifest.webmanifest?v=0.4.0',
+  './index.html?v=0.9.0',
+  './style.css?v=0.9.0',
+  './app.js?v=0.9.0',
+  './data/cards.json?v=0.9.0',
+  './manifest.webmanifest?v=0.9.0',
   './apple-touch-icon.png',
   './icon-192.png',
   './icon-512.png',
 ];
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_ASSETS)));
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -27,6 +32,39 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+async function networkFirst(request, fallback) {
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const cache = await caches.open(CACHE_NAME);
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (error) {
+    return (await caches.match(request)) || (fallback ? await caches.match(fallback) : null) || Response.error();
+  }
+}
+
+async function cacheFirst(request) {
+  const cached = await caches.match(request);
+  if (cached) {
+    fetch(request)
+      .then((response) => {
+        if (!response.ok) return;
+        caches.open(CACHE_NAME).then((cache) => cache.put(request, response));
+      })
+      .catch(() => {});
+    return cached;
+  }
+
+  const response = await fetch(request);
+  if (response.ok) {
+    const cache = await caches.open(CACHE_NAME);
+    cache.put(request, response.clone());
+  }
+  return response;
+}
+
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
@@ -34,24 +72,15 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  event.respondWith(
-    fetch(request)
-      .then((response) => {
-        if (response.ok) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-        }
-        return response;
-      })
-      .catch(async () => {
-        const cached = await caches.match(request);
-        if (cached) return cached;
+  if (request.mode === 'navigate') {
+    event.respondWith(networkFirst(request, './index.html'));
+    return;
+  }
 
-        if (request.mode === 'navigate') {
-          return caches.match('./index.html');
-        }
+  if (url.pathname.endsWith('/data/cards.json')) {
+    event.respondWith(networkFirst(request, './data/cards.json?v=0.9.0'));
+    return;
+  }
 
-        return Response.error();
-      }),
-  );
+  event.respondWith(cacheFirst(request));
 });

@@ -1,6 +1,6 @@
 const APP_META = {
-  version: '0.4.0',
-  status: 'Stable',
+  version: '0.9.0',
+  status: 'Release Candidate',
   updated: '16.07.2026',
 };
 
@@ -61,6 +61,9 @@ const state = {
   recent: readStoredArray('gornRecent'),
   clients: readStoredClients(),
 };
+
+let pendingServiceWorker = null;
+let systemBannerMode = '';
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -565,22 +568,91 @@ function bindEvents() {
     button.addEventListener('click', () => navigate(button.dataset.nav));
   });
 
+  $('#runSystemCheckBtn')?.addEventListener('click', runSystemDiagnostics);
+  $('#reloadAppBtn')?.addEventListener('click', () => window.location.reload());
+  $('#systemBannerAction')?.addEventListener('click', () => {
+    if (systemBannerMode === 'update' && pendingServiceWorker) {
+      pendingServiceWorker.postMessage({ type: 'SKIP_WAITING' });
+      showSystemBanner('Устанавливается обновление…', '', 'update');
+    }
+  });
+
+  window.addEventListener('online', updateConnectionBanner);
+  window.addEventListener('offline', updateConnectionBanner);
   window.addEventListener('popstate', (event) => restoreHistoryView(event.state));
+  updateConnectionBanner();
+}
+
+function showSystemBanner(message, actionLabel = '', mode = 'notice') {
+  const banner = $('#systemBanner');
+  const text = $('#systemBannerText');
+  const action = $('#systemBannerAction');
+  if (!banner || !text || !action) return;
+
+  systemBannerMode = mode;
+  text.textContent = message;
+  action.textContent = actionLabel || 'Обновить';
+  action.classList.toggle('hidden', !actionLabel);
+  banner.className = `system-banner ${mode}`;
+}
+
+function hideSystemBanner(mode = '') {
+  if (mode && systemBannerMode !== mode) return;
+  const banner = $('#systemBanner');
+  if (banner) banner.className = 'system-banner hidden';
+  systemBannerMode = '';
+}
+
+function updateConnectionBanner() {
+  if (!navigator.onLine) {
+    showSystemBanner('Нет интернета — GORN продолжает работать с сохранёнными данными', '', 'offline');
+    return;
+  }
+  if (systemBannerMode === 'offline') {
+    hideSystemBanner('offline');
+    if (pendingServiceWorker) {
+      offerServiceWorkerUpdate(pendingServiceWorker);
+    } else {
+      showToast('Соединение восстановлено');
+    }
+  }
+}
+
+function offerServiceWorkerUpdate(worker) {
+  if (!worker) return;
+  pendingServiceWorker = worker;
+  showSystemBanner('Доступно обновление GORN', 'Обновить сейчас', 'update');
 }
 
 function registerServiceWorker() {
-  if (!('serviceWorker' in navigator)) return;
+  if (!('serviceWorker' in navigator)) {
+    updateConnectionBanner();
+    return;
+  }
 
-  const hadController = Boolean(navigator.serviceWorker.controller);
   let refreshing = false;
 
   navigator.serviceWorker
     .register('service-worker.js', { updateViaCache: 'none' })
-    .then((registration) => registration.update())
+    .then((registration) => {
+      if (registration.waiting) offerServiceWorkerUpdate(registration.waiting);
+
+      registration.addEventListener('updatefound', () => {
+        const worker = registration.installing;
+        if (!worker) return;
+        worker.addEventListener('statechange', () => {
+          if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+            offerServiceWorkerUpdate(worker);
+          }
+        });
+      });
+
+      registration.update().catch(() => {});
+    })
     .catch((error) => console.warn('GORN: Service Worker не зарегистрирован', error));
 
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!hadController || refreshing) return;
+    if (refreshing) return;
     refreshing = true;
     window.location.reload();
   });
@@ -606,6 +678,7 @@ function navigate(where, pushHistory = true) {
     setActiveNav('about');
     showOnly('aboutView');
     renderBackupInfo();
+    runSystemDiagnostics();
     if (pushHistory) history.pushState({ view: 'about' }, '', window.location.href);
     return;
   }
@@ -948,6 +1021,122 @@ function renderBackupInfo() {
   }
   if (undoButton) {
     undoButton.classList.toggle('hidden', !readUndoImportBackup());
+  }
+}
+
+function formatStorageBytes(value) {
+  const bytes = Number(value) || 0;
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} КБ`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+}
+
+function setSystemCheck(id, text, tone = 'ok') {
+  const element = $(`#${id}`);
+  if (!element) return;
+  element.textContent = text;
+  element.className = `check-${tone}`;
+}
+
+function validateRuntimeDatabase() {
+  const cardIds = new Set();
+  const clientIds = new Set();
+  let duplicateCards = 0;
+  let duplicateClients = 0;
+
+  state.cards.forEach((card) => {
+    if (cardIds.has(card.id)) duplicateCards += 1;
+    cardIds.add(card.id);
+  });
+  state.clients.forEach((client) => {
+    if (clientIds.has(client.id)) duplicateClients += 1;
+    clientIds.add(client.id);
+  });
+
+  return {
+    valid: state.cards.length > 0 && duplicateCards === 0 && duplicateClients === 0,
+    duplicateCards,
+    duplicateClients,
+  };
+}
+
+async function runSystemDiagnostics() {
+  const summary = $('#systemCheckSummary');
+  if (summary) {
+    summary.textContent = 'Выполняется проверка…';
+    summary.className = 'system-check-summary';
+  }
+
+  const issues = [];
+  const online = navigator.onLine;
+  setSystemCheck('checkOnline', online ? 'Есть соединение' : 'Офлайн', online ? 'ok' : 'warn');
+
+  let storageOk = false;
+  try {
+    const testKey = '__gorn_storage_test__';
+    localStorage.setItem(testKey, 'ok');
+    storageOk = localStorage.getItem(testKey) === 'ok';
+    localStorage.removeItem(testKey);
+  } catch (error) {
+    storageOk = false;
+  }
+  setSystemCheck('checkStorage', storageOk ? 'Работает' : 'Ошибка', storageOk ? 'ok' : 'error');
+  if (!storageOk) issues.push('локальное хранилище');
+
+  const hasServiceWorker = 'serviceWorker' in navigator;
+  let serviceWorkerReady = false;
+  if (hasServiceWorker) {
+    try {
+      const registration = await navigator.serviceWorker.getRegistration();
+      serviceWorkerReady = Boolean(registration && (registration.active || registration.waiting));
+    } catch (error) {
+      serviceWorkerReady = false;
+    }
+  }
+  setSystemCheck(
+    'checkServiceWorker',
+    serviceWorkerReady ? 'Готов' : hasServiceWorker ? 'Устанавливается' : 'Не поддерживается',
+    serviceWorkerReady ? 'ok' : 'warn',
+  );
+  if (!serviceWorkerReady) issues.push('офлайн-режим');
+
+  const validation = validateRuntimeDatabase();
+  setSystemCheck(
+    'checkCards',
+    validation.valid ? `${state.cards.length} карточек` : 'Есть ошибки',
+    validation.valid ? 'ok' : 'error',
+  );
+  if (!validation.valid) issues.push('база карточек');
+
+  const works = countClientWorks(state.clients);
+  setSystemCheck('checkDatabase', `${state.clients.length} клиентов, ${works} работ`, 'ok');
+
+  let usageLabel = 'Недоступно';
+  let usageTone = 'warn';
+  if (navigator.storage?.estimate) {
+    try {
+      const estimate = await navigator.storage.estimate();
+      const usage = Number(estimate.usage) || 0;
+      const quota = Number(estimate.quota) || 0;
+      usageLabel = quota
+        ? `${formatStorageBytes(usage)} из ${formatStorageBytes(quota)}`
+        : formatStorageBytes(usage);
+      usageTone = quota && usage / quota > 0.85 ? 'warn' : 'ok';
+      if (quota && usage / quota > 0.95) issues.push('свободная память');
+    } catch (error) {
+      usageLabel = 'Недоступно';
+    }
+  }
+  setSystemCheck('checkStorageUsage', usageLabel, usageTone);
+
+  if (summary) {
+    if (!issues.length) {
+      summary.textContent = 'Система готова к рабочему использованию';
+      summary.className = 'system-check-summary ok';
+    } else {
+      summary.textContent = `Требует внимания: ${issues.join(', ')}`;
+      summary.className = 'system-check-summary warn';
+    }
   }
 }
 

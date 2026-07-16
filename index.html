@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="GORN">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="manifest.webmanifest?v=0.4.0">
+    <link rel="manifest" href="manifest.webmanifest?v=0.9.0">
     <link rel="icon" href="icon-192.png" type="image/png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <link rel="stylesheet" href="style.css?v=0.4.0">
+    <link rel="stylesheet" href="style.css?v=0.9.0">
     <title>GORN MASTER SYSTEM</title>
   </head>
   <body>
@@ -21,11 +21,18 @@
         <div>
           <h1>GORN</h1>
           <p>Профессиональный помощник печника</p>
-          <div id="versionLine" class="version-line">v0.4.0 • Stable • 16.07.2026</div>
+          <div id="versionLine" class="version-line">v0.9.0 • Release Candidate • 16.07.2026</div>
         </div>
       </div>
       <input id="search" type="search" placeholder="Поиск: дымит, кирпич, чистка...">
     </header>
+
+    <div id="systemBanner" class="system-banner hidden" role="status" aria-live="polite">
+      <div class="system-banner-content">
+        <span id="systemBannerText">Состояние системы</span>
+        <button id="systemBannerAction" class="system-banner-action hidden" type="button">Обновить</button>
+      </div>
+    </div>
 
     <main class="container">
       <section id="homeView">
@@ -467,16 +474,36 @@
           <img src="icon-192.png" alt="GORN">
           <h2>GORN MASTER SYSTEM</h2>
           <p>Профессиональный помощник печника</p>
-          <div id="aboutVersion" class="about-version">Версия 0.4.0 Stable</div>
+          <div id="aboutVersion" class="about-version">Версия 0.9.0 Release Candidate</div>
           <p id="aboutUpdated">Обновлено: 16.07.2026</p>
-          <h3>Что нового</h3>
+          <h3>Release Candidate</h3>
           <ul>
-            <li>Общий обзор клиентов, работ, выездов и денег на главной</li>
-            <li>Быстрые действия: новый клиент, план, база клиентов и резервная копия</li>
-            <li>Блок «Требует внимания» для сегодняшних, просроченных задач и обратных звонков</li>
-            <li>Сохранены сметы, чек-листы, фотографии, план и история работ</li>
-            <li>Улучшена адаптация главного экрана для телефона и планшета</li>
+            <li>Проверка работы на телефоне, планшете и компьютере</li>
+            <li>Усиленная работа без интернета и безопасное обновление кэша</li>
+            <li>Контроль локального хранилища, базы карточек и резервных копий</li>
+            <li>Предупреждение при отсутствии интернета и при доступном обновлении</li>
+            <li>Сохранены клиенты, работы, фотографии, сметы и чек-листы</li>
           </ul>
+
+          <section class="system-check-panel" aria-labelledby="systemCheckTitle">
+            <div class="system-check-heading">
+              <div>
+                <h3 id="systemCheckTitle">Проверка системы</h3>
+                <p>Быстрая диагностика перед выпуском GORN v1.0.0</p>
+              </div>
+              <button id="runSystemCheckBtn" class="secondary-btn" type="button">Проверить</button>
+            </div>
+            <div id="systemCheckSummary" class="system-check-summary">Проверка ещё не запускалась</div>
+            <div class="system-check-grid">
+              <div class="system-check-item"><span>Интернет</span><strong id="checkOnline">—</strong></div>
+              <div class="system-check-item"><span>Хранилище</span><strong id="checkStorage">—</strong></div>
+              <div class="system-check-item"><span>Офлайн-режим</span><strong id="checkServiceWorker">—</strong></div>
+              <div class="system-check-item"><span>Карточки</span><strong id="checkCards">—</strong></div>
+              <div class="system-check-item"><span>Клиенты и работы</span><strong id="checkDatabase">—</strong></div>
+              <div class="system-check-item"><span>Занято памяти</span><strong id="checkStorageUsage">—</strong></div>
+            </div>
+            <button id="reloadAppBtn" class="secondary-btn system-reload-btn" type="button">↻ Перезагрузить приложение</button>
+          </section>
 
           <section class="backup-panel" aria-labelledby="backupTitle">
             <h3 id="backupTitle">Резервная копия данных</h3>
@@ -505,6 +532,6 @@
     </nav>
 
     <div id="toast" class="toast">Скопировано</div>
-    <script src="app.js?v=0.4.0"></script>
+    <script src="app.js?v=0.9.0"></script>
   </body>
 </html>
