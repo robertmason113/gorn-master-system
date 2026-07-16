@@ -954,3 +954,144 @@ textarea{
     min-height:44px;
   }
 }
+
+
+/* v0.9.1 RC2 — зашифрованная синхронизация устройств */
+.cloud-sync-panel{
+  margin-top:22px;
+  padding:16px;
+  border:1px solid #55401E;
+  border-radius:16px;
+  background:linear-gradient(145deg,#211D17,#151517);
+  text-align:left;
+}
+.cloud-sync-heading{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+}
+.cloud-sync-heading h3{
+  margin:0;
+  color:var(--gold2);
+}
+.cloud-sync-heading p{
+  margin:4px 0 0;
+  color:var(--muted);
+  font-size:13px;
+}
+.cloud-sync-badge{
+  flex:0 0 auto;
+  border:1px solid #356B40;
+  border-radius:999px;
+  padding:7px 10px;
+  color:#9FE0AD;
+  font-size:11px;
+  font-weight:850;
+  white-space:nowrap;
+}
+.cloud-sync-badge.warn{
+  border-color:#795E25;
+  color:#F2D273;
+}
+.cloud-sync-badge.error{
+  border-color:#743A32;
+  color:#FFAAA0;
+}
+.cloud-sync-status{
+  margin:13px 0;
+  padding:11px 12px;
+  border:1px solid #343438;
+  border-radius:11px;
+  background:#1B1B1E;
+  color:var(--stone);
+  font-size:13px;
+  font-weight:720;
+  line-height:1.45;
+}
+.cloud-sync-status.ok{
+  border-color:#356B40;
+  color:#9FE0AD;
+}
+.cloud-sync-status.warn{
+  border-color:#795E25;
+  color:#F2D273;
+}
+.cloud-sync-status.error{
+  border-color:#743A32;
+  color:#FFAAA0;
+}
+.cloud-sync-label{
+  display:block;
+  margin-bottom:7px;
+  color:var(--gold2);
+  font-size:12px;
+  font-weight:800;
+}
+.cloud-sync-code-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:9px;
+}
+.cloud-sync-code-row input{
+  min-width:0;
+  width:100%;
+  border:1px solid #414146;
+  border-radius:11px;
+  background:#1B1B1E;
+  color:var(--text);
+  padding:12px 13px;
+  font:inherit;
+  letter-spacing:.08em;
+  outline:none;
+}
+.cloud-sync-code-row input:focus{
+  border-color:var(--gold);
+}
+.cloud-sync-actions{
+  display:grid;
+  gap:9px;
+  margin-top:10px;
+}
+.cloud-sync-actions.setup{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+}
+.cloud-sync-actions.transfer{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+.cloud-sync-actions button{
+  min-width:0;
+  width:100%;
+}
+.cloud-sync-disconnect{
+  width:100%;
+  margin-top:10px;
+  color:#FFD59A;
+}
+.cloud-sync-note{
+  margin:12px 0 0;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.5;
+}
+.cloud-sync-panel button:disabled{
+  cursor:wait;
+  opacity:.55;
+}
+@media(max-width:720px){
+  .cloud-sync-heading{
+    flex-direction:column;
+  }
+  .cloud-sync-actions.setup,
+  .cloud-sync-actions.transfer{
+    grid-template-columns:1fr;
+  }
+}
+@media(max-width:520px){
+  .cloud-sync-code-row{
+    grid-template-columns:1fr;
+  }
+  .cloud-sync-code-row .secondary-btn{
+    width:100%;
+  }
+}

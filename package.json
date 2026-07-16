@@ -1,0 +1,12 @@
+{
+  "name": "gorn-master-system",
+  "version": "0.9.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@netlify/blobs": "10.1.0"
+  }
+}

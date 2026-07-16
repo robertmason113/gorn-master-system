@@ -1,13 +1,13 @@
-const APP_VERSION = '0.9.0';
-const CACHE_NAME = `gorn-v${APP_VERSION}-rc1`;
+const APP_VERSION = '0.9.1';
+const CACHE_NAME = `gorn-v${APP_VERSION}-rc2`;
 const APP_SHELL = [
   './',
   './index.html',
-  './index.html?v=0.9.0',
-  './style.css?v=0.9.0',
-  './app.js?v=0.9.0',
-  './data/cards.json?v=0.9.0',
-  './manifest.webmanifest?v=0.9.0',
+  './index.html?v=0.9.1',
+  './style.css?v=0.9.1',
+  './app.js?v=0.9.1',
+  './data/cards.json?v=0.9.1',
+  './manifest.webmanifest?v=0.9.1',
   './apple-touch-icon.png',
   './icon-192.png',
   './icon-512.png',
@@ -72,13 +72,17 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  if (url.pathname.startsWith('/.netlify/functions/')) {
+    return;
+  }
+
   if (request.mode === 'navigate') {
     event.respondWith(networkFirst(request, './index.html'));
     return;
   }
 
   if (url.pathname.endsWith('/data/cards.json')) {
-    event.respondWith(networkFirst(request, './data/cards.json?v=0.9.0'));
+    event.respondWith(networkFirst(request, './data/cards.json?v=0.9.1'));
     return;
   }
 

@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="GORN">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="manifest.webmanifest?v=0.9.0">
+    <link rel="manifest" href="manifest.webmanifest?v=0.9.1">
     <link rel="icon" href="icon-192.png" type="image/png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <link rel="stylesheet" href="style.css?v=0.9.0">
+    <link rel="stylesheet" href="style.css?v=0.9.1">
     <title>GORN MASTER SYSTEM</title>
   </head>
   <body>
@@ -21,7 +21,7 @@
         <div>
           <h1>GORN</h1>
           <p>Профессиональный помощник печника</p>
-          <div id="versionLine" class="version-line">v0.9.0 • Release Candidate • 16.07.2026</div>
+          <div id="versionLine" class="version-line">v0.9.1 • Release Candidate 2 • 16.07.2026</div>
         </div>
       </div>
       <input id="search" type="search" placeholder="Поиск: дымит, кирпич, чистка...">
@@ -169,7 +169,7 @@
         <div class="clients-header">
           <div>
             <div class="section-title clients-section-title">КЛИЕНТЫ <span id="clientsCountBadge" class="count-badge"></span></div>
-            <div class="clients-storage-note">Данные сохраняются только на этом устройстве</div>
+            <div class="clients-storage-note">Данные сохраняются на устройстве и синхронизируются после подключения</div>
           </div>
           <button id="newClientBtn" class="primary-btn compact-btn" type="button">+ Новый клиент</button>
         </div>
@@ -474,11 +474,11 @@
           <img src="icon-192.png" alt="GORN">
           <h2>GORN MASTER SYSTEM</h2>
           <p>Профессиональный помощник печника</p>
-          <div id="aboutVersion" class="about-version">Версия 0.9.0 Release Candidate</div>
+          <div id="aboutVersion" class="about-version">Версия 0.9.1 Release Candidate 2</div>
           <p id="aboutUpdated">Обновлено: 16.07.2026</p>
-          <h3>Release Candidate</h3>
+          <h3>Release Candidate 2</h3>
           <ul>
-            <li>Проверка работы на телефоне, планшете и компьютере</li>
+            <li>Единая зашифрованная база на Mac, iPhone и iPad</li>
             <li>Усиленная работа без интернета и безопасное обновление кэша</li>
             <li>Контроль локального хранилища, базы карточек и резервных копий</li>
             <li>Предупреждение при отсутствии интернета и при доступном обновлении</li>
@@ -500,9 +500,56 @@
               <div class="system-check-item"><span>Офлайн-режим</span><strong id="checkServiceWorker">—</strong></div>
               <div class="system-check-item"><span>Карточки</span><strong id="checkCards">—</strong></div>
               <div class="system-check-item"><span>Клиенты и работы</span><strong id="checkDatabase">—</strong></div>
+              <div class="system-check-item"><span>Синхронизация</span><strong id="checkCloudSync">—</strong></div>
               <div class="system-check-item"><span>Занято памяти</span><strong id="checkStorageUsage">—</strong></div>
             </div>
             <button id="reloadAppBtn" class="secondary-btn system-reload-btn" type="button">↻ Перезагрузить приложение</button>
+          </section>
+
+          <section class="cloud-sync-panel" aria-labelledby="cloudSyncTitle">
+            <div class="cloud-sync-heading">
+              <div>
+                <h3 id="cloudSyncTitle">Синхронизация устройств</h3>
+                <p>Одна зашифрованная база для Mac, iPhone и iPad.</p>
+              </div>
+              <span id="cloudSyncBadge" class="cloud-sync-badge warn">Не настроена</span>
+            </div>
+
+            <div id="cloudSyncStatus" class="cloud-sync-status">
+              Создайте один код и введите его на всех устройствах.
+            </div>
+
+            <label class="cloud-sync-label" for="cloudSyncCodeInput">Код синхронизации</label>
+            <div class="cloud-sync-code-row">
+              <input
+                id="cloudSyncCodeInput"
+                type="password"
+                autocomplete="off"
+                autocapitalize="characters"
+                spellcheck="false"
+                placeholder="Одинаковый код на всех устройствах"
+              >
+              <button id="toggleCloudSyncCodeBtn" class="secondary-btn" type="button">Показать</button>
+            </div>
+
+            <div class="cloud-sync-actions setup">
+              <button id="generateCloudSyncCodeBtn" class="secondary-btn" type="button">Создать код</button>
+              <button id="saveCloudSyncCodeBtn" class="primary-btn" type="button">Подключить</button>
+              <button id="copyCloudSyncCodeBtn" class="secondary-btn" type="button">Копировать код</button>
+            </div>
+
+            <div class="cloud-sync-actions transfer">
+              <button id="cloudUploadBtn" class="primary-btn" type="button">↑ Отправить в облако</button>
+              <button id="cloudDownloadBtn" class="secondary-btn" type="button">↓ Загрузить из облака</button>
+            </div>
+
+            <button id="disconnectCloudSyncBtn" class="secondary-btn cloud-sync-disconnect hidden" type="button">
+              Отключить синхронизацию на этом устройстве
+            </button>
+
+            <p class="cloud-sync-note">
+              Код не отправляется в открытом виде. База шифруется на устройстве и синхронизируется автоматически после изменений.
+            </p>
           </section>
 
           <section class="backup-panel" aria-labelledby="backupTitle">
@@ -532,6 +579,6 @@
     </nav>
 
     <div id="toast" class="toast">Скопировано</div>
-    <script src="app.js?v=0.9.0"></script>
+    <script src="app.js?v=0.9.1"></script>
   </body>
 </html>
