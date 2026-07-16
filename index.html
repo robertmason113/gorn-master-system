@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="GORN">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="manifest.webmanifest?v=0.3.8">
+    <link rel="manifest" href="manifest.webmanifest?v=0.3.9">
     <link rel="icon" href="icon-192.png" type="image/png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <link rel="stylesheet" href="style.css?v=0.3.8">
+    <link rel="stylesheet" href="style.css?v=0.3.9">
     <title>GORN MASTER SYSTEM</title>
   </head>
   <body>
@@ -21,7 +21,7 @@
         <div>
           <h1>GORN</h1>
           <p>Профессиональный помощник печника</p>
-          <div id="versionLine" class="version-line">v0.3.8 • Stable • 16.07.2026</div>
+          <div id="versionLine" class="version-line">v0.3.9 • Stable • 16.07.2026</div>
         </div>
       </div>
       <input id="search" type="search" placeholder="Поиск: дымит, кирпич, чистка...">
@@ -267,6 +267,81 @@
                   <textarea id="workNotes" rows="5" maxlength="4000" placeholder="Объём работ, материалы, результат, что осталось сделать..."></textarea>
                 </label>
 
+                <section id="workEstimateSection" class="work-estimate-panel" aria-labelledby="workEstimateTitle">
+                  <div class="work-estimate-header">
+                    <div>
+                      <h4 id="workEstimateTitle">Смета и расчёт</h4>
+                      <p>Работы, материалы, предоплата и готовый текст для клиента</p>
+                    </div>
+                    <button id="applyEstimateTotalBtn" class="secondary-btn" type="button">Подставить итог</button>
+                  </div>
+
+                  <div class="estimate-summary-grid">
+                    <div class="estimate-summary-card">
+                      <span>Работы</span>
+                      <strong id="estimateLaborTotal">0 ₽</strong>
+                    </div>
+                    <div class="estimate-summary-card">
+                      <span>Материалы</span>
+                      <strong id="estimateMaterialsTotal">0 ₽</strong>
+                    </div>
+                    <div class="estimate-summary-card total">
+                      <span>Итого</span>
+                      <strong id="estimateGrandTotal">0 ₽</strong>
+                    </div>
+                    <div class="estimate-summary-card balance">
+                      <span>Остаток</span>
+                      <strong id="estimateBalance">0 ₽</strong>
+                    </div>
+                  </div>
+
+                  <div class="estimate-columns">
+                    <section class="estimate-group">
+                      <h5>Работы</h5>
+                      <div class="estimate-add-grid">
+                        <input data-estimate-new-name="labor" type="text" maxlength="180" placeholder="Наименование работы">
+                        <input data-estimate-new-quantity="labor" type="text" inputmode="decimal" maxlength="20" value="1" aria-label="Количество">
+                        <input data-estimate-new-price="labor" type="text" inputmode="decimal" maxlength="40" placeholder="Цена" aria-label="Цена">
+                        <button data-estimate-add="labor" type="button">Добавить</button>
+                      </div>
+                      <div class="estimate-column-head">
+                        <span>Наименование</span><span>Кол.</span><span>Цена</span><span>Сумма</span><span></span>
+                      </div>
+                      <div class="estimate-list" data-estimate-list="labor"></div>
+                    </section>
+
+                    <section class="estimate-group">
+                      <h5>Материалы</h5>
+                      <div class="estimate-add-grid">
+                        <input data-estimate-new-name="materials" type="text" maxlength="180" placeholder="Наименование материала">
+                        <input data-estimate-new-quantity="materials" type="text" inputmode="decimal" maxlength="20" value="1" aria-label="Количество">
+                        <input data-estimate-new-price="materials" type="text" inputmode="decimal" maxlength="40" placeholder="Цена" aria-label="Цена">
+                        <button data-estimate-add="materials" type="button">Добавить</button>
+                      </div>
+                      <div class="estimate-column-head">
+                        <span>Наименование</span><span>Кол.</span><span>Цена</span><span>Сумма</span><span></span>
+                      </div>
+                      <div class="estimate-list" data-estimate-list="materials"></div>
+                    </section>
+                  </div>
+
+                  <label class="form-field estimate-prepayment">
+                    <span>Предоплата</span>
+                    <input id="estimatePrepayment" type="text" inputmode="decimal" maxlength="40" placeholder="Например: 20 000 ₽">
+                  </label>
+
+                  <section class="estimate-client-copy">
+                    <div class="estimate-copy-heading">
+                      <div>
+                        <h5>Готовый расчёт для клиента</h5>
+                        <p>Текст обновляется автоматически</p>
+                      </div>
+                      <button id="copyEstimateBtn" class="copy-btn" type="button">📋 Копировать расчёт</button>
+                    </div>
+                    <div id="estimateClientText" class="estimate-client-text"></div>
+                  </section>
+                </section>
+
                 <section id="workChecklistSection" class="work-checklist-panel" aria-labelledby="workChecklistTitle">
                   <div class="work-checklist-header">
                     <div>
@@ -345,15 +420,15 @@
           <img src="icon-192.png" alt="GORN">
           <h2>GORN MASTER SYSTEM</h2>
           <p>Профессиональный помощник печника</p>
-          <div id="aboutVersion" class="about-version">Версия 0.3.8 Stable</div>
+          <div id="aboutVersion" class="about-version">Версия 0.3.9 Stable</div>
           <p id="aboutUpdated">Обновлено: 16.07.2026</p>
           <h3>Что нового</h3>
           <ul>
-            <li>Чек-лист выезда внутри каждой работы клиента</li>
-            <li>Отдельные списки: что взять, инструменты и материалы</li>
-            <li>Отметки выполнения и общий прогресс подготовки</li>
-            <li>Замеры на объекте сохраняются вместе с работой</li>
-            <li>До 6 сжатых фотографий объекта в каждой записи</li>
+            <li>Смета внутри каждой работы клиента</li>
+            <li>Отдельные списки работ и материалов</li>
+            <li>Количество, цена и автоматический итог</li>
+            <li>Предоплата и автоматический расчёт остатка</li>
+            <li>Готовый текст расчёта с копированием для клиента</li>
           </ul>
 
           <section class="backup-panel" aria-labelledby="backupTitle">
@@ -383,6 +458,6 @@
     </nav>
 
     <div id="toast" class="toast">Скопировано</div>
-    <script src="app.js?v=0.3.8"></script>
+    <script src="app.js?v=0.3.9"></script>
   </body>
 </html>

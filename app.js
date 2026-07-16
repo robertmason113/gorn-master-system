@@ -1,5 +1,5 @@
 const APP_META = {
-  version: '0.3.8',
+  version: '0.3.9',
   status: 'Stable',
   updated: '16.07.2026',
 };
@@ -9,6 +9,10 @@ const WORK_STATUSES = ['Планируется', 'В работе', 'Завер�
 const CHECKLIST_GROUPS = [
   { key: 'take', label: 'Что взять с собой' },
   { key: 'tools', label: 'Инструменты' },
+  { key: 'materials', label: 'Материалы' },
+];
+const ESTIMATE_GROUPS = [
+  { key: 'labor', label: 'Работы' },
   { key: 'materials', label: 'Материалы' },
 ];
 const MAX_WORK_PHOTOS = 6;
@@ -52,6 +56,7 @@ const state = {
   editingClientId: null,
   editingWorkId: null,
   workChecklistDraft: null,
+  workEstimateDraft: null,
   favorites: readStoredArray('gornFavorites'),
   recent: readStoredArray('gornRecent'),
   clients: readStoredClients(),
@@ -179,6 +184,83 @@ function workChecklistProgress(checklist) {
   };
 }
 
+
+function createEstimateItemId(group = 'estimate') {
+  return `${group}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeEstimateItem(rawItem, index = 0, group = 'estimate') {
+  const source = rawItem && typeof rawItem === 'object' ? rawItem : {};
+  return {
+    id: toText(source.id, `${group}-${index + 1}`),
+    name: toText(source.name || source.title),
+    quantity: toText(source.quantity ?? source.qty, '1'),
+    price: toText(source.price),
+  };
+}
+
+function createDefaultWorkEstimate() {
+  return {
+    labor: [],
+    materials: [],
+    prepayment: '',
+  };
+}
+
+function normalizeWorkEstimate(rawEstimate) {
+  const source = rawEstimate && typeof rawEstimate === 'object' ? rawEstimate : {};
+  const result = {
+    labor: [],
+    materials: [],
+    prepayment: toText(source.prepayment),
+  };
+
+  ESTIMATE_GROUPS.forEach(({ key }) => {
+    const rawItems = Array.isArray(source[key]) ? source[key] : [];
+    result[key] = rawItems
+      .map((item, index) => normalizeEstimateItem(item, index, key))
+      .filter((item) => item.name);
+  });
+
+  return result;
+}
+
+function cloneWorkEstimate(estimate) {
+  return normalizeWorkEstimate(JSON.parse(JSON.stringify(estimate || {})));
+}
+
+function parseEstimateQuantity(value) {
+  const normalized = toText(value, '1')
+    .replace(/\s+/g, '')
+    .replace(',', '.')
+    .replace(/[^\d.]/g, '');
+  const quantity = Number.parseFloat(normalized);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 0;
+}
+
+function calculateWorkEstimate(estimate = {}) {
+  const normalized = normalizeWorkEstimate(estimate);
+  const subtotal = (key) =>
+    normalized[key].reduce(
+      (sum, item) => sum + parseEstimateQuantity(item.quantity) * parseAmountNumber(item.price),
+      0,
+    );
+
+  const laborTotal = subtotal('labor');
+  const materialsTotal = subtotal('materials');
+  const total = laborTotal + materialsTotal;
+  const prepayment = parseAmountNumber(normalized.prepayment);
+
+  return {
+    laborTotal,
+    materialsTotal,
+    total,
+    prepayment,
+    balance: total - prepayment,
+    lineCount: normalized.labor.length + normalized.materials.length,
+  };
+}
+
 function normalizeWork(rawWork, index = 0) {
   const source = rawWork && typeof rawWork === 'object' ? rawWork : {};
   const createdAt = toText(source.createdAt, new Date().toISOString());
@@ -193,6 +275,7 @@ function normalizeWork(rawWork, index = 0) {
     amount: toText(source.amount),
     notes: toText(source.notes),
     checklist: normalizeWorkChecklist(source.checklist),
+    estimate: normalizeWorkEstimate(source.estimate),
     createdAt,
     updatedAt: toText(source.updatedAt, createdAt),
   };
@@ -446,6 +529,25 @@ function bindEvents() {
   });
   $('#workPhotoInput')?.addEventListener('change', handleWorkPhotoFiles);
 
+  document.querySelectorAll('[data-estimate-add]').forEach((button) => {
+    button.addEventListener('click', () => addWorkEstimateItem(button.dataset.estimateAdd));
+  });
+  document.querySelectorAll('[data-estimate-new-name]').forEach((input) => {
+    input.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      addWorkEstimateItem(input.dataset.estimateNewName);
+    });
+  });
+  $('#workEstimateSection')?.addEventListener('input', handleWorkEstimateInput);
+  $('#workEstimateSection')?.addEventListener('click', handleWorkEstimateClick);
+  $('#copyEstimateBtn')?.addEventListener('click', (event) => {
+    copyText('estimateClientText', event.currentTarget);
+  });
+  $('#applyEstimateTotalBtn')?.addEventListener('click', applyEstimateTotalToWork);
+  $('#workTitle')?.addEventListener('input', renderWorkEstimateSummary);
+  $('#workAddress')?.addEventListener('input', renderWorkEstimateSummary);
+
   document.querySelectorAll('[data-nav]').forEach((button) => {
     button.addEventListener('click', () => navigate(button.dataset.nav));
   });
@@ -514,6 +616,7 @@ function showListView(mode = state.mode, pushHistory = false) {
   state.current = null;
   state.editingClientId = null;
   state.editingWorkId = null;
+  state.workEstimateDraft = null;
   setActiveNav(state.mode);
   setSearchContext('cards');
   showOnly('homeView');
@@ -530,6 +633,7 @@ function showClientsView(pushHistory = false) {
   state.current = null;
   state.editingClientId = null;
   state.editingWorkId = null;
+  state.workEstimateDraft = null;
   setActiveNav('clients');
   setSearchContext('clients');
   showOnly('clientsView');
@@ -546,6 +650,7 @@ function showPlanView(pushHistory = false) {
   state.current = null;
   state.editingClientId = null;
   state.editingWorkId = null;
+  state.workEstimateDraft = null;
   setActiveNav('plan');
   setSearchContext('plan');
   showOnly('planView');
@@ -1242,10 +1347,13 @@ function renderWorkHistory(client = currentEditingClient()) {
 
 function workCard(work) {
   const checklist = workChecklistProgress(work.checklist);
+  const estimate = calculateWorkEstimate(work.estimate);
+  const shownAmount = work.amount || (estimate.total ? formatRubles(estimate.total) : '');
   const details = [
     work.date ? `🗓 ${esc(formatClientDate(work.date))}` : '',
     work.address ? `📍 ${esc(work.address)}` : '',
-    work.amount ? `💰 ${esc(work.amount)}` : '',
+    shownAmount ? `💰 ${esc(shownAmount)}` : '',
+    estimate.lineCount ? `🧾 ${estimate.lineCount}` : '',
     checklist.total ? `☑ ${checklist.done}/${checklist.total}` : '',
     checklist.photos ? `📷 ${checklist.photos}` : '',
   ].filter(Boolean);
@@ -1472,6 +1580,227 @@ function compressWorkPhoto(file) {
   });
 }
 
+
+function renderEstimateGroup(group) {
+  const list = $(`[data-estimate-list="${group}"]`);
+  if (!list || !state.workEstimateDraft) return;
+  const items = state.workEstimateDraft[group] || [];
+
+  list.innerHTML = items.length
+    ? items
+        .map(
+          (item) => `
+            <div class="estimate-row" data-estimate-row="${esc(item.id)}">
+              <input
+                class="estimate-name"
+                type="text"
+                maxlength="180"
+                value="${esc(item.name)}"
+                data-estimate-group="${esc(group)}"
+                data-estimate-id="${esc(item.id)}"
+                data-estimate-field="name"
+                aria-label="Наименование"
+              >
+              <input
+                class="estimate-quantity"
+                type="text"
+                inputmode="decimal"
+                maxlength="20"
+                value="${esc(item.quantity)}"
+                data-estimate-group="${esc(group)}"
+                data-estimate-id="${esc(item.id)}"
+                data-estimate-field="quantity"
+                aria-label="Количество"
+              >
+              <input
+                class="estimate-price"
+                type="text"
+                inputmode="decimal"
+                maxlength="40"
+                value="${esc(item.price)}"
+                data-estimate-group="${esc(group)}"
+                data-estimate-id="${esc(item.id)}"
+                data-estimate-field="price"
+                aria-label="Цена"
+              >
+              <strong>${esc(formatRubles(parseEstimateQuantity(item.quantity) * parseAmountNumber(item.price)))}</strong>
+              <button
+                class="estimate-remove"
+                type="button"
+                data-estimate-remove="${esc(group)}"
+                data-estimate-id="${esc(item.id)}"
+                aria-label="Удалить строку"
+              >×</button>
+            </div>`,
+        )
+        .join('')
+    : '<div class="estimate-empty">Строк пока нет</div>';
+}
+
+function buildEstimateClientText() {
+  const client = currentEditingClient();
+  const estimate = state.workEstimateDraft || normalizeWorkEstimate({});
+  const totals = calculateWorkEstimate(estimate);
+  const title = toText($('#workTitle')?.value, 'Работа');
+  const address = toText($('#workAddress')?.value, client?.address || '');
+  const lines = ['Расчёт GORN'];
+
+  if (client?.name) lines.push(`Клиент: ${client.name}`);
+  if (address) lines.push(`Объект: ${address}`);
+  if (title) lines.push(`Работа: ${title}`);
+
+  const appendGroup = (label, key) => {
+    const items = estimate[key] || [];
+    if (!items.length) return;
+    lines.push('', `${label}:`);
+    items.forEach((item, index) => {
+      const quantity = parseEstimateQuantity(item.quantity);
+      const price = parseAmountNumber(item.price);
+      const total = quantity * price;
+      lines.push(
+        `${index + 1}. ${item.name} — ${item.quantity || 1} × ${formatRubles(price)} = ${formatRubles(total)}`,
+      );
+    });
+  };
+
+  appendGroup('Работы', 'labor');
+  appendGroup('Материалы', 'materials');
+
+  lines.push('', `Итого: ${formatRubles(totals.total)}`);
+  if (totals.prepayment) lines.push(`Предоплата: ${formatRubles(totals.prepayment)}`);
+  lines.push(
+    totals.balance >= 0
+      ? `Остаток: ${formatRubles(totals.balance)}`
+      : `Переплата: ${formatRubles(Math.abs(totals.balance))}`,
+  );
+
+  return lines.join('\n');
+}
+
+function renderWorkEstimateSummary() {
+  const estimate = state.workEstimateDraft || normalizeWorkEstimate({});
+  const totals = calculateWorkEstimate(estimate);
+
+  const labor = $('#estimateLaborTotal');
+  const materials = $('#estimateMaterialsTotal');
+  const total = $('#estimateGrandTotal');
+  const balance = $('#estimateBalance');
+  if (labor) labor.textContent = formatRubles(totals.laborTotal);
+  if (materials) materials.textContent = formatRubles(totals.materialsTotal);
+  if (total) total.textContent = formatRubles(totals.total);
+  if (balance) {
+    balance.textContent =
+      totals.balance >= 0
+        ? formatRubles(totals.balance)
+        : `−${formatRubles(Math.abs(totals.balance))}`;
+    balance.classList.toggle('negative', totals.balance < 0);
+  }
+
+  const clientText = $('#estimateClientText');
+  if (clientText) clientText.textContent = buildEstimateClientText();
+
+  const copyButton = $('#copyEstimateBtn');
+  if (copyButton) copyButton.disabled = totals.lineCount === 0;
+  const applyButton = $('#applyEstimateTotalBtn');
+  if (applyButton) applyButton.disabled = totals.lineCount === 0;
+
+  if (totals.lineCount && $('#workAmount')) {
+    $('#workAmount').value = formatRubles(totals.total);
+  }
+}
+
+function renderWorkEstimateDraft() {
+  if (!state.workEstimateDraft) {
+    state.workEstimateDraft = normalizeWorkEstimate(createDefaultWorkEstimate());
+  }
+
+  ESTIMATE_GROUPS.forEach(({ key }) => renderEstimateGroup(key));
+  const prepayment = $('#estimatePrepayment');
+  if (prepayment && prepayment.value !== state.workEstimateDraft.prepayment) {
+    prepayment.value = state.workEstimateDraft.prepayment || '';
+  }
+  renderWorkEstimateSummary();
+}
+
+function addWorkEstimateItem(group) {
+  if (!ESTIMATE_GROUPS.some((item) => item.key === group)) return;
+  if (!state.workEstimateDraft) {
+    state.workEstimateDraft = normalizeWorkEstimate(createDefaultWorkEstimate());
+  }
+
+  const nameInput = $(`[data-estimate-new-name="${group}"]`);
+  const quantityInput = $(`[data-estimate-new-quantity="${group}"]`);
+  const priceInput = $(`[data-estimate-new-price="${group}"]`);
+  const name = toText(nameInput?.value);
+  if (!name) {
+    nameInput?.focus();
+    showToast('Укажите наименование');
+    return;
+  }
+
+  state.workEstimateDraft[group].push({
+    id: createEstimateItemId(group),
+    name,
+    quantity: toText(quantityInput?.value, '1'),
+    price: toText(priceInput?.value),
+  });
+
+  if (nameInput) nameInput.value = '';
+  if (quantityInput) quantityInput.value = '1';
+  if (priceInput) priceInput.value = '';
+  renderWorkEstimateDraft();
+  nameInput?.focus();
+}
+
+function handleWorkEstimateInput(event) {
+  if (!state.workEstimateDraft) return;
+  const target = event.target;
+
+  if (target.id === 'estimatePrepayment') {
+    state.workEstimateDraft.prepayment = target.value;
+    renderWorkEstimateSummary();
+    return;
+  }
+
+  const group = target.dataset.estimateGroup;
+  const itemId = target.dataset.estimateId;
+  const field = target.dataset.estimateField;
+  if (!group || !itemId || !['name', 'quantity', 'price'].includes(field)) return;
+  const item = (state.workEstimateDraft[group] || []).find((entry) => entry.id === itemId);
+  if (!item) return;
+  item[field] = target.value;
+
+  const row = target.closest('.estimate-row');
+  const totalCell = row?.querySelector('strong');
+  if (totalCell) {
+    totalCell.textContent = formatRubles(
+      parseEstimateQuantity(item.quantity) * parseAmountNumber(item.price),
+    );
+  }
+  renderWorkEstimateSummary();
+}
+
+function handleWorkEstimateClick(event) {
+  const removeButton = event.target.closest('[data-estimate-remove]');
+  if (!removeButton || !state.workEstimateDraft) return;
+  const group = removeButton.dataset.estimateRemove;
+  const itemId = removeButton.dataset.estimateId;
+  state.workEstimateDraft[group] = (state.workEstimateDraft[group] || []).filter(
+    (item) => item.id !== itemId,
+  );
+  renderWorkEstimateDraft();
+}
+
+function applyEstimateTotalToWork() {
+  const totals = calculateWorkEstimate(state.workEstimateDraft || {});
+  if (!totals.lineCount) {
+    showToast('Смета пока пуста');
+    return;
+  }
+  $('#workAmount').value = formatRubles(totals.total);
+  showToast('Итог сметы подставлен');
+}
+
 function openWorkForm(workId = null) {
   const client = currentEditingClient();
   if (!client) return;
@@ -1480,6 +1809,9 @@ function openWorkForm(workId = null) {
   state.workChecklistDraft = work
     ? cloneWorkChecklist(work.checklist)
     : normalizeWorkChecklist(createDefaultWorkChecklist());
+  state.workEstimateDraft = work
+    ? cloneWorkEstimate(work.estimate)
+    : normalizeWorkEstimate(createDefaultWorkEstimate());
 
   $('#workFormTitle').textContent = work ? 'Запись о работе' : 'Новая работа';
   $('#workTitle').value = work?.title || '';
@@ -1495,6 +1827,7 @@ function openWorkForm(workId = null) {
   $('#workTools')?.classList.add('hidden');
   $('#addWorkBtn').classList.add('hidden');
   renderWorkChecklistDraft();
+  renderWorkEstimateDraft();
   $('#workTitle').focus();
   $('#workFormWrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -1502,6 +1835,7 @@ function openWorkForm(workId = null) {
 function closeWorkForm() {
   state.editingWorkId = null;
   state.workChecklistDraft = null;
+  state.workEstimateDraft = null;
   $('#workForm')?.reset();
   $('#workFormWrap')?.classList.add('hidden');
   $('#workList')?.classList.remove('hidden');
@@ -1531,6 +1865,10 @@ function saveWorkFromForm(event) {
   if (state.workChecklistDraft) {
     state.workChecklistDraft.measurements = $('#workMeasurements')?.value || '';
   }
+  const estimate = normalizeWorkEstimate(
+    state.workEstimateDraft || createDefaultWorkEstimate(),
+  );
+  const estimateTotals = calculateWorkEstimate(estimate);
 
   const work = normalizeWork(
     {
@@ -1539,9 +1877,10 @@ function saveWorkFromForm(event) {
       date: $('#workDate').value || localDateISO(),
       address: $('#workAddress').value,
       status: $('#workStatus').value,
-      amount: $('#workAmount').value,
+      amount: estimateTotals.lineCount ? formatRubles(estimateTotals.total) : $('#workAmount').value,
       notes: $('#workNotes').value,
       checklist: state.workChecklistDraft || normalizeWorkChecklist({}),
+      estimate,
       createdAt: existing?.createdAt || now,
       updatedAt: now,
     },
@@ -1889,6 +2228,7 @@ async function copyText(id, button) {
   const source = document.getElementById(id);
   if (!source) return;
   const text = source.innerText;
+  const originalLabel = button?.textContent || '📋 Копировать';
 
   try {
     if (!navigator.clipboard?.writeText) throw new Error('Clipboard API недоступен');
@@ -1911,7 +2251,7 @@ async function copyText(id, button) {
 
   setTimeout(() => {
     button.classList.remove('done');
-    button.textContent = '📋 Копировать';
+    button.textContent = originalLabel;
   }, 1100);
 }
 
