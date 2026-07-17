@@ -1,5 +1,5 @@
 const APP_META = {
-  version: '1.2.0',
+  version: '1.3.0',
   status: 'Stable',
   updated: '17.07.2026',
 };
@@ -15,6 +15,167 @@ const ESTIMATE_GROUPS = [
   { key: 'labor', label: 'Работы' },
   { key: 'materials', label: 'Материалы' },
 ];
+const BUSINESS_PROFILE_STORAGE_KEY = 'gornBusinessProfile';
+const DEFAULT_BUSINESS_PROFILE = {
+  companyName: 'ГОРН',
+  masterName: 'Кирилл',
+  phone: '',
+  email: '',
+  website: 'ingorn.ru',
+  region: 'Москва и Московская область',
+  slogan: 'Там, где рождается тепло дома.',
+};
+
+const ESTIMATE_CATALOGS = {
+  labor: [
+    {
+      category: 'Диагностика и выезд',
+      items: [
+        { name: 'Выезд и осмотр объекта', unit: 'выезд' },
+        { name: 'Диагностика печи или камина', unit: 'усл.' },
+        { name: 'Проверка тяги и дымовых каналов', unit: 'усл.' },
+        { name: 'Подготовка сметы и технического решения', unit: 'усл.' },
+      ],
+    },
+    {
+      category: 'Ремонт',
+      items: [
+        { name: 'Частичная перекладка печи', unit: 'усл.' },
+        { name: 'Ремонт топки', unit: 'усл.' },
+        { name: 'Замена варочной плиты', unit: 'шт.' },
+        { name: 'Замена топочной дверцы', unit: 'шт.' },
+        { name: 'Замена поддувальной дверцы', unit: 'шт.' },
+        { name: 'Замена прочистной дверцы', unit: 'шт.' },
+        { name: 'Замена колосниковой решётки', unit: 'шт.' },
+        { name: 'Ремонт дымохода', unit: 'усл.' },
+        { name: 'Восстановление кладочных швов', unit: 'м²' },
+        { name: 'Устранение трещин', unit: 'усл.' },
+        { name: 'Штукатурка печи', unit: 'м²' },
+        { name: 'Окраска печи', unit: 'м²' },
+        { name: 'Облицовка печи или камина', unit: 'м²' },
+      ],
+    },
+    {
+      category: 'Чистка',
+      items: [
+        { name: 'Чистка дымохода', unit: 'усл.' },
+        { name: 'Чистка печи', unit: 'усл.' },
+        { name: 'Чистка дымовых каналов', unit: 'усл.' },
+        { name: 'Удаление сажи и золы', unit: 'усл.' },
+      ],
+    },
+    {
+      category: 'Строительство',
+      items: [
+        { name: 'Кладка отопительной печи', unit: 'усл.' },
+        { name: 'Кладка отопительно-варочной печи', unit: 'усл.' },
+        { name: 'Кладка камина', unit: 'усл.' },
+        { name: 'Кладка банной печи', unit: 'усл.' },
+        { name: 'Кладка барбекю-комплекса', unit: 'усл.' },
+        { name: 'Монтаж дымохода', unit: 'м' },
+        { name: 'Устройство фундамента', unit: 'усл.' },
+        { name: 'Противопожарная разделка', unit: 'усл.' },
+      ],
+    },
+    {
+      category: 'Демонтаж и подготовка',
+      items: [
+        { name: 'Демонтаж старой печи', unit: 'усл.' },
+        { name: 'Разборка повреждённого участка', unit: 'усл.' },
+        { name: 'Подготовка и защита помещения', unit: 'усл.' },
+        { name: 'Уборка после работ', unit: 'усл.' },
+      ],
+    },
+  ],
+  materials: [
+    {
+      category: 'Кирпич и кладка',
+      items: [
+        { name: 'Кирпич печной полнотелый', unit: 'шт.' },
+        { name: 'Кирпич шамотный ША-8', unit: 'шт.' },
+        { name: 'Кирпич шамотный ША-5', unit: 'шт.' },
+        { name: 'Кирпич облицовочный', unit: 'шт.' },
+        { name: 'Кирпич клинкерный', unit: 'шт.' },
+        { name: 'Смесь кладочная глино-песчаная', unit: 'меш.' },
+        { name: 'Смесь шамотная огнеупорная', unit: 'меш.' },
+        { name: 'Раствор кладочный готовый', unit: 'меш.' },
+        { name: 'Глина печная', unit: 'меш.' },
+        { name: 'Песок просеянный', unit: 'меш.' },
+      ],
+    },
+    {
+      category: 'Печная фурнитура',
+      items: [
+        { name: 'Плита варочная чугунная', unit: 'шт.' },
+        { name: 'Дверца топочная', unit: 'шт.' },
+        { name: 'Дверца поддувальная', unit: 'шт.' },
+        { name: 'Дверца прочистная', unit: 'шт.' },
+        { name: 'Колосниковая решётка', unit: 'шт.' },
+        { name: 'Задвижка дымоходная', unit: 'шт.' },
+        { name: 'Вьюшка печная', unit: 'шт.' },
+        { name: 'Духовой шкаф печной', unit: 'шт.' },
+        { name: 'Проволока вязальная', unit: 'м' },
+        { name: 'Уголок металлический', unit: 'м' },
+        { name: 'Полоса металлическая', unit: 'м' },
+      ],
+    },
+    {
+      category: 'Дымоход',
+      items: [
+        { name: 'Труба нержавеющая одноконтурная', unit: 'м' },
+        { name: 'Труба сэндвич', unit: 'м' },
+        { name: 'Переход дымохода', unit: 'шт.' },
+        { name: 'Тройник дымохода', unit: 'шт.' },
+        { name: 'Ревизия дымохода', unit: 'шт.' },
+        { name: 'Конденсатосборник', unit: 'шт.' },
+        { name: 'Хомут соединительный', unit: 'шт.' },
+        { name: 'Хомут стеновой', unit: 'шт.' },
+        { name: 'Кровельная проходка', unit: 'шт.' },
+        { name: 'Оголовок дымохода', unit: 'шт.' },
+        { name: 'Герметик высокотемпературный', unit: 'шт.' },
+      ],
+    },
+    {
+      category: 'Изоляция и безопасность',
+      items: [
+        { name: 'Базальтовый картон', unit: 'лист' },
+        { name: 'Плита минерит', unit: 'лист' },
+        { name: 'Кальций-силикатная плита', unit: 'лист' },
+        { name: 'Базальтовая вата', unit: 'упак.' },
+        { name: 'Лист нержавеющей стали', unit: 'лист' },
+        { name: 'Лист оцинкованной стали', unit: 'лист' },
+        { name: 'Огнестойкий герметик', unit: 'шт.' },
+      ],
+    },
+    {
+      category: 'Отделка',
+      items: [
+        { name: 'Штукатурная смесь жаростойкая', unit: 'меш.' },
+        { name: 'Сетка армирующая', unit: 'м²' },
+        { name: 'Грунтовка', unit: 'л' },
+        { name: 'Краска термостойкая', unit: 'л' },
+        { name: 'Клей жаростойкий', unit: 'меш.' },
+        { name: 'Затирка жаростойкая', unit: 'кг' },
+        { name: 'Плитка облицовочная', unit: 'м²' },
+        { name: 'Изразцы', unit: 'шт.' },
+      ],
+    },
+    {
+      category: 'Расходные материалы',
+      items: [
+        { name: 'Крепёж', unit: 'компл.' },
+        { name: 'Диск отрезной', unit: 'шт.' },
+        { name: 'Малярная плёнка', unit: 'рул.' },
+        { name: 'Мешки для строительного мусора', unit: 'шт.' },
+        { name: 'Скотч малярный', unit: 'рул.' },
+        { name: 'Перчатки защитные', unit: 'пар.' },
+      ],
+    },
+  ],
+};
+
+let estimateLogoPromise = null;
+
 const MAX_WORK_PHOTOS = 6;
 const MAX_WORK_PHOTO_CHARS = 550000;
 const MAX_WORK_PHOTOS_TOTAL_CHARS = 2800000;
@@ -71,6 +232,7 @@ const state = {
   favorites: readStoredArray('gornFavorites'),
   recent: readStoredArray('gornRecent'),
   clients: readStoredClients(),
+  businessProfile: readStoredBusinessProfile(),
 };
 
 let pendingServiceWorker = null;
@@ -102,6 +264,43 @@ function readStoredClients() {
     localStorage.removeItem('gornClients');
     return [];
   }
+}
+
+function normalizeBusinessProfile(rawProfile) {
+  const source = rawProfile && typeof rawProfile === 'object' ? rawProfile : {};
+  return {
+    companyName: toText(source.companyName, DEFAULT_BUSINESS_PROFILE.companyName),
+    masterName: toText(source.masterName, DEFAULT_BUSINESS_PROFILE.masterName),
+    phone: toText(source.phone),
+    email: toText(source.email),
+    website: toText(source.website, DEFAULT_BUSINESS_PROFILE.website),
+    region: toText(source.region, DEFAULT_BUSINESS_PROFILE.region),
+    slogan: toText(source.slogan, DEFAULT_BUSINESS_PROFILE.slogan),
+  };
+}
+
+function readStoredBusinessProfile() {
+  try {
+    const value = JSON.parse(localStorage.getItem(BUSINESS_PROFILE_STORAGE_KEY) || '{}');
+    return normalizeBusinessProfile(value);
+  } catch (error) {
+    console.warn('GORN: данные мастера были восстановлены по умолчанию', error);
+    localStorage.removeItem(BUSINESS_PROFILE_STORAGE_KEY);
+    return normalizeBusinessProfile({});
+  }
+}
+
+function addDaysISO(value, days = 14) {
+  const date = new Date(`${toText(value, localDateISO())}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return localDateISO();
+  date.setDate(date.getDate() + Number(days || 0));
+  return localDateISO(date);
+}
+
+function createEstimateDocumentNumber() {
+  const date = localDateISO().replaceAll('-', '');
+  const suffix = String(Date.now()).slice(-5);
+  return `GORN-${date}-${suffix}`;
 }
 
 function localDateISO(date = new Date()) {
@@ -212,24 +411,47 @@ function normalizeEstimateItem(rawItem, index = 0, group = 'estimate') {
     id: toText(source.id, `${group}-${index + 1}`),
     name: toText(source.name || source.title),
     quantity: toText(source.quantity ?? source.qty, '1'),
+    unit: toText(source.unit, group === 'labor' ? 'усл.' : 'шт.'),
     price: toText(source.price),
   };
 }
 
 function createDefaultWorkEstimate() {
+  const documentDate = localDateISO();
   return {
     labor: [],
     materials: [],
+    delivery: '',
+    wasteRemoval: '',
     prepayment: '',
+    documentNumber: createEstimateDocumentNumber(),
+    documentDate,
+    validUntil: addDaysISO(documentDate, 14),
+    paymentTerms: 'Предоплата на материалы. Остаток — после завершения и приёмки работ.',
+    clientNote: 'Дополнительные работы выполняются только после согласования с клиентом.',
   };
 }
 
 function normalizeWorkEstimate(rawEstimate) {
   const source = rawEstimate && typeof rawEstimate === 'object' ? rawEstimate : {};
+  const documentDate = toText(source.documentDate, localDateISO());
   const result = {
     labor: [],
     materials: [],
+    delivery: toText(source.delivery),
+    wasteRemoval: toText(source.wasteRemoval),
     prepayment: toText(source.prepayment),
+    documentNumber: toText(source.documentNumber, createEstimateDocumentNumber()),
+    documentDate,
+    validUntil: toText(source.validUntil, addDaysISO(documentDate, 14)),
+    paymentTerms: toText(
+      source.paymentTerms,
+      'Предоплата на материалы. Остаток — после завершения и приёмки работ.',
+    ),
+    clientNote: toText(
+      source.clientNote,
+      'Дополнительные работы выполняются только после согласования с клиентом.',
+    ),
   };
 
   ESTIMATE_GROUPS.forEach(({ key }) => {
@@ -265,16 +487,23 @@ function calculateWorkEstimate(estimate = {}) {
 
   const laborTotal = subtotal('labor');
   const materialsTotal = subtotal('materials');
-  const total = laborTotal + materialsTotal;
+  const deliveryTotal = parseAmountNumber(normalized.delivery);
+  const wasteRemovalTotal = parseAmountNumber(normalized.wasteRemoval);
+  const total = laborTotal + materialsTotal + deliveryTotal + wasteRemovalTotal;
   const prepayment = parseAmountNumber(normalized.prepayment);
+  const extraLineCount = [normalized.delivery, normalized.wasteRemoval].filter((value) =>
+    toText(value),
+  ).length;
 
   return {
     laborTotal,
     materialsTotal,
+    deliveryTotal,
+    wasteRemovalTotal,
     total,
     prepayment,
     balance: total - prepayment,
-    lineCount: normalized.labor.length + normalized.materials.length,
+    lineCount: normalized.labor.length + normalized.materials.length + extraLineCount,
   };
 }
 
@@ -452,6 +681,8 @@ function prepareCards(rawCards) {
 async function init() {
   renderVersion();
   bindEvents();
+  renderEstimateCatalogs();
+  preloadEstimateAssets();
   registerServiceWorker();
 
   try {
@@ -604,6 +835,12 @@ function bindEvents() {
   document.querySelectorAll('[data-estimate-add]').forEach((button) => {
     button.addEventListener('click', () => addWorkEstimateItem(button.dataset.estimateAdd));
   });
+  document.querySelectorAll('[data-estimate-preset-add]').forEach((button) => {
+    button.addEventListener('click', () => addEstimatePresetItem(button.dataset.estimatePresetAdd));
+  });
+  document.querySelectorAll('[data-estimate-preset-select]').forEach((select) => {
+    select.addEventListener('change', () => updateEstimatePresetUnit(select.dataset.estimatePresetSelect));
+  });
   document.querySelectorAll('[data-estimate-new-name]').forEach((input) => {
     input.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter') return;
@@ -617,6 +854,9 @@ function bindEvents() {
     copyText('estimateClientText', event.currentTarget);
   });
   $('#applyEstimateTotalBtn')?.addEventListener('click', applyEstimateTotalToWork);
+  $('#downloadEstimatePdfBtn')?.addEventListener('click', downloadEstimatePdf);
+  $('#shareEstimatePdfBtn')?.addEventListener('click', shareEstimatePdf);
+  $('#estimateBusinessProfile')?.addEventListener('input', handleBusinessProfileInput);
   $('#workTitle')?.addEventListener('input', renderWorkEstimateSummary);
   $('#workAddress')?.addEventListener('input', renderWorkEstimateSummary);
 
@@ -928,6 +1168,7 @@ function save(options = {}) {
     localStorage.setItem('gornFavorites', JSON.stringify(state.favorites));
     localStorage.setItem('gornRecent', JSON.stringify(state.recent));
     localStorage.setItem('gornClients', JSON.stringify(state.clients));
+    localStorage.setItem(BUSINESS_PROFILE_STORAGE_KEY, JSON.stringify(state.businessProfile));
 
     if (markChanged) {
       localStorage.setItem(CLOUD_SYNC_UPDATED_KEY, new Date().toISOString());
@@ -1555,6 +1796,7 @@ function createBackupPayload() {
       clients: state.clients,
       favorites: state.favorites,
       recent: state.recent,
+      businessProfile: state.businessProfile,
     },
   };
 }
@@ -1629,11 +1871,13 @@ function parseBackupPayload(rawPayload) {
   const clients = normalizeImportedClients(rawPayload.data.clients);
   const favorites = toArray(rawPayload.data.favorites);
   const recent = toArray(rawPayload.data.recent);
+  const businessProfile = normalizeBusinessProfile(rawPayload.data.businessProfile);
 
   return {
     clients,
     favorites,
     recent,
+    businessProfile,
     appVersion: toText(rawPayload.appVersion, 'не указана'),
     exportedAt: toText(rawPayload.exportedAt),
     dataUpdatedAt: toText(rawPayload.dataUpdatedAt || rawPayload.exportedAt),
@@ -1646,6 +1890,7 @@ function applyImportedData(data, options = {}) {
   state.clients = data.clients;
   state.favorites = data.favorites.filter((id) => state.cards.some((card) => card.id === id));
   state.recent = data.recent.filter((id) => state.cards.some((card) => card.id === id));
+  state.businessProfile = normalizeBusinessProfile(data.businessProfile);
   state.clientSearch = '';
   state.clientStatusFilter = stateDefaults.clientStatusFilter;
   state.clientSort = stateDefaults.clientSort;
@@ -2547,6 +2792,16 @@ function renderEstimateGroup(group) {
                 aria-label="Количество"
               >
               <input
+                class="estimate-unit"
+                type="text"
+                maxlength="20"
+                value="${esc(item.unit)}"
+                data-estimate-group="${esc(group)}"
+                data-estimate-id="${esc(item.id)}"
+                data-estimate-field="unit"
+                aria-label="Единица"
+              >
+              <input
                 class="estimate-price"
                 type="text"
                 inputmode="decimal"
@@ -2571,15 +2826,27 @@ function renderEstimateGroup(group) {
     : '<div class="estimate-empty">Строк пока нет</div>';
 }
 
+function estimateQuantityLabel(item) {
+  const quantity = toText(item.quantity, '1');
+  const unit = toText(item.unit);
+  return unit ? `${quantity} ${unit}` : quantity;
+}
+
 function buildEstimateClientText() {
   const client = currentEditingClient();
   const estimate = state.workEstimateDraft || normalizeWorkEstimate({});
   const totals = calculateWorkEstimate(estimate);
   const title = toText($('#workTitle')?.value, 'Работа');
   const address = toText($('#workAddress')?.value, client?.address || '');
-  const lines = ['Расчёт GORN'];
+  const profile = normalizeBusinessProfile(state.businessProfile);
+  const lines = [
+    `Смета ГОРН № ${estimate.documentNumber}`,
+    `Дата: ${formatDocumentDate(estimate.documentDate)}`,
+  ];
 
+  if (estimate.validUntil) lines.push(`Действительна до: ${formatDocumentDate(estimate.validUntil)}`);
   if (client?.name) lines.push(`Клиент: ${client.name}`);
+  if (client?.phone) lines.push(`Телефон: ${client.phone}`);
   if (address) lines.push(`Объект: ${address}`);
   if (title) lines.push(`Работа: ${title}`);
 
@@ -2592,13 +2859,18 @@ function buildEstimateClientText() {
       const price = parseAmountNumber(item.price);
       const total = quantity * price;
       lines.push(
-        `${index + 1}. ${item.name} — ${item.quantity || 1} × ${formatRubles(price)} = ${formatRubles(total)}`,
+        `${index + 1}. ${item.name} — ${estimateQuantityLabel(item)} × ${formatRubles(price)} = ${formatRubles(total)}`,
       );
     });
   };
 
   appendGroup('Работы', 'labor');
   appendGroup('Материалы', 'materials');
+
+  const extras = [];
+  if (toText(estimate.delivery)) extras.push(`Доставка материалов — ${formatRubles(totals.deliveryTotal)}`);
+  if (toText(estimate.wasteRemoval)) extras.push(`Вывоз строительного мусора — ${formatRubles(totals.wasteRemovalTotal)}`);
+  if (extras.length) lines.push('', 'Дополнительно:', ...extras);
 
   lines.push('', `Итого: ${formatRubles(totals.total)}`);
   if (totals.prepayment) lines.push(`Предоплата: ${formatRubles(totals.prepayment)}`);
@@ -2607,6 +2879,11 @@ function buildEstimateClientText() {
       ? `Остаток: ${formatRubles(totals.balance)}`
       : `Переплата: ${formatRubles(Math.abs(totals.balance))}`,
   );
+  if (estimate.paymentTerms) lines.push('', `Условия оплаты: ${estimate.paymentTerms}`);
+  if (estimate.clientNote) lines.push(`Примечание: ${estimate.clientNote}`);
+
+  const contacts = [profile.masterName, profile.phone, profile.website].filter(Boolean).join(' · ');
+  if (contacts) lines.push('', `ГОРН: ${contacts}`);
 
   return lines.join('\n');
 }
@@ -2630,11 +2907,18 @@ function renderWorkEstimateSummary() {
     balance.classList.toggle('negative', totals.balance < 0);
   }
 
+  renderEstimateDocumentFields();
+  renderBusinessProfileForm();
+
   const clientText = $('#estimateClientText');
   if (clientText) clientText.textContent = buildEstimateClientText();
 
   const copyButton = $('#copyEstimateBtn');
   if (copyButton) copyButton.disabled = totals.lineCount === 0;
+  const downloadButton = $('#downloadEstimatePdfBtn');
+  if (downloadButton) downloadButton.disabled = totals.lineCount === 0;
+  const shareButton = $('#shareEstimatePdfBtn');
+  if (shareButton) shareButton.disabled = totals.lineCount === 0;
   const applyButton = $('#applyEstimateTotalBtn');
   if (applyButton) applyButton.disabled = totals.lineCount === 0;
 
@@ -2649,6 +2933,7 @@ function renderWorkEstimateDraft() {
   }
 
   ESTIMATE_GROUPS.forEach(({ key }) => renderEstimateGroup(key));
+  renderEstimateCatalogs();
   const prepayment = $('#estimatePrepayment');
   if (prepayment && prepayment.value !== state.workEstimateDraft.prepayment) {
     prepayment.value = state.workEstimateDraft.prepayment || '';
@@ -2664,6 +2949,7 @@ function addWorkEstimateItem(group) {
 
   const nameInput = $(`[data-estimate-new-name="${group}"]`);
   const quantityInput = $(`[data-estimate-new-quantity="${group}"]`);
+  const unitInput = $(`[data-estimate-new-unit="${group}"]`);
   const priceInput = $(`[data-estimate-new-price="${group}"]`);
   const name = toText(nameInput?.value);
   if (!name) {
@@ -2676,11 +2962,13 @@ function addWorkEstimateItem(group) {
     id: createEstimateItemId(group),
     name,
     quantity: toText(quantityInput?.value, '1'),
+    unit: toText(unitInput?.value, group === 'labor' ? 'усл.' : 'шт.'),
     price: toText(priceInput?.value),
   });
 
   if (nameInput) nameInput.value = '';
   if (quantityInput) quantityInput.value = '1';
+  if (unitInput) unitInput.value = group === 'labor' ? 'усл.' : 'шт.';
   if (priceInput) priceInput.value = '';
   renderWorkEstimateDraft();
   nameInput?.focus();
@@ -2690,8 +2978,18 @@ function handleWorkEstimateInput(event) {
   if (!state.workEstimateDraft) return;
   const target = event.target;
 
-  if (target.id === 'estimatePrepayment') {
-    state.workEstimateDraft.prepayment = target.value;
+  const simpleFields = {
+    estimatePrepayment: 'prepayment',
+    estimateDelivery: 'delivery',
+    estimateWasteRemoval: 'wasteRemoval',
+    estimateDocumentNumber: 'documentNumber',
+    estimateDocumentDate: 'documentDate',
+    estimateValidUntil: 'validUntil',
+    estimatePaymentTerms: 'paymentTerms',
+    estimateClientNote: 'clientNote',
+  };
+  if (simpleFields[target.id]) {
+    state.workEstimateDraft[simpleFields[target.id]] = target.value;
     renderWorkEstimateSummary();
     return;
   }
@@ -2699,7 +2997,7 @@ function handleWorkEstimateInput(event) {
   const group = target.dataset.estimateGroup;
   const itemId = target.dataset.estimateId;
   const field = target.dataset.estimateField;
-  if (!group || !itemId || !['name', 'quantity', 'price'].includes(field)) return;
+  if (!group || !itemId || !['name', 'quantity', 'unit', 'price'].includes(field)) return;
   const item = (state.workEstimateDraft[group] || []).find((entry) => entry.id === itemId);
   if (!item) return;
   item[field] = target.value;
@@ -2723,6 +3021,500 @@ function handleWorkEstimateClick(event) {
     (item) => item.id !== itemId,
   );
   renderWorkEstimateDraft();
+}
+
+
+function catalogItems(group) {
+  return (ESTIMATE_CATALOGS[group] || []).flatMap((section) =>
+    section.items.map((item) => ({ ...item, category: section.category })),
+  );
+}
+
+function renderEstimateCatalogs() {
+  document.querySelectorAll('[data-estimate-preset-select]').forEach((select) => {
+    const group = select.dataset.estimatePresetSelect;
+    if (!group || select.dataset.ready === 'true') return;
+    const sections = ESTIMATE_CATALOGS[group] || [];
+    select.innerHTML = '<option value="">Быстрый выбор из списка…</option>' + sections
+      .map(
+        (section) => `<optgroup label="${esc(section.category)}">${section.items
+          .map(
+            (item) => `<option value="${esc(item.name)}" data-unit="${esc(item.unit)}">${esc(item.name)}</option>`,
+          )
+          .join('')}</optgroup>`,
+      )
+      .join('');
+    select.dataset.ready = 'true';
+  });
+}
+
+function updateEstimatePresetUnit(group) {
+  const select = $(`[data-estimate-preset-select="${group}"]`);
+  const unitInput = $(`[data-estimate-preset-unit="${group}"]`);
+  const unit = select?.selectedOptions?.[0]?.dataset?.unit || (group === 'labor' ? 'усл.' : 'шт.');
+  if (unitInput) unitInput.value = unit;
+}
+
+function addEstimatePresetItem(group) {
+  if (!ESTIMATE_GROUPS.some((item) => item.key === group)) return;
+  if (!state.workEstimateDraft) state.workEstimateDraft = normalizeWorkEstimate(createDefaultWorkEstimate());
+
+  const select = $(`[data-estimate-preset-select="${group}"]`);
+  const quantityInput = $(`[data-estimate-preset-quantity="${group}"]`);
+  const unitInput = $(`[data-estimate-preset-unit="${group}"]`);
+  const priceInput = $(`[data-estimate-preset-price="${group}"]`);
+  const name = toText(select?.value);
+  if (!name) {
+    select?.focus();
+    showToast('Выберите позицию из списка');
+    return;
+  }
+
+  state.workEstimateDraft[group].push({
+    id: createEstimateItemId(group),
+    name,
+    quantity: toText(quantityInput?.value, '1'),
+    unit: toText(unitInput?.value, group === 'labor' ? 'усл.' : 'шт.'),
+    price: toText(priceInput?.value),
+  });
+
+  if (select) select.value = '';
+  if (quantityInput) quantityInput.value = '1';
+  if (unitInput) unitInput.value = group === 'labor' ? 'усл.' : 'шт.';
+  if (priceInput) priceInput.value = '';
+  renderWorkEstimateDraft();
+  select?.focus();
+}
+
+function renderEstimateDocumentFields() {
+  if (!state.workEstimateDraft) return;
+  const values = {
+    estimateDocumentNumber: state.workEstimateDraft.documentNumber,
+    estimateDocumentDate: state.workEstimateDraft.documentDate,
+    estimateValidUntil: state.workEstimateDraft.validUntil,
+    estimateDelivery: state.workEstimateDraft.delivery,
+    estimateWasteRemoval: state.workEstimateDraft.wasteRemoval,
+    estimatePaymentTerms: state.workEstimateDraft.paymentTerms,
+    estimateClientNote: state.workEstimateDraft.clientNote,
+  };
+  Object.entries(values).forEach(([id, value]) => {
+    const input = $(`#${id}`);
+    if (input && document.activeElement !== input && input.value !== toText(value)) input.value = toText(value);
+  });
+}
+
+function renderBusinessProfileForm() {
+  const profile = normalizeBusinessProfile(state.businessProfile);
+  document.querySelectorAll('[data-business-profile]').forEach((input) => {
+    const field = input.dataset.businessProfile;
+    if (document.activeElement !== input && input.value !== toText(profile[field])) {
+      input.value = toText(profile[field]);
+    }
+  });
+}
+
+function handleBusinessProfileInput(event) {
+  const field = event.target.dataset.businessProfile;
+  if (!field || !(field in DEFAULT_BUSINESS_PROFILE)) return;
+  state.businessProfile = normalizeBusinessProfile({
+    ...state.businessProfile,
+    [field]: event.target.value,
+  });
+  save();
+  renderWorkEstimateSummary();
+}
+
+function formatDocumentDate(value) {
+  const date = new Date(`${toText(value, localDateISO())}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? toText(value) : date.toLocaleDateString('ru-RU');
+}
+
+function preloadEstimateAssets() {
+  if (!estimateLogoPromise) {
+    estimateLogoPromise = new Promise((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => resolve(null);
+      image.src = `icon-192.png?v=${APP_META.version}`;
+    });
+  }
+  return estimateLogoPromise;
+}
+
+function estimatePdfFilename() {
+  const client = currentEditingClient();
+  const estimate = state.workEstimateDraft || normalizeWorkEstimate({});
+  const clean = (value) => toText(value, 'client').replace(/[^a-zA-Zа-яА-Я0-9_-]+/g, '_').slice(0, 60);
+  return `GORN_Смета_${clean(client?.name)}_${clean(estimate.documentNumber)}.pdf`;
+}
+
+function estimateDocumentPayload() {
+  const client = currentEditingClient();
+  const estimate = normalizeWorkEstimate(state.workEstimateDraft || createDefaultWorkEstimate());
+  return {
+    client,
+    profile: normalizeBusinessProfile(state.businessProfile),
+    estimate,
+    totals: calculateWorkEstimate(estimate),
+    workTitle: toText($('#workTitle')?.value, 'Работы по печи или камину'),
+    workAddress: toText($('#workAddress')?.value, client?.address || ''),
+    workNotes: toText($('#workNotes')?.value),
+  };
+}
+
+function canvasWrappedLines(context, text, maxWidth) {
+  const paragraphs = String(text || '').split(/\n/);
+  const lines = [];
+  paragraphs.forEach((paragraph, paragraphIndex) => {
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    if (!words.length) {
+      lines.push('');
+      return;
+    }
+    let line = '';
+    words.forEach((word) => {
+      const candidate = line ? `${line} ${word}` : word;
+      if (line && context.measureText(candidate).width > maxWidth) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = candidate;
+      }
+    });
+    if (line) lines.push(line);
+    if (paragraphIndex < paragraphs.length - 1) lines.push('');
+  });
+  return lines;
+}
+
+async function renderEstimatePdfPages(payload) {
+  const WIDTH = 1240;
+  const HEIGHT = 1754;
+  const MARGIN = 78;
+  const FOOTER_TOP = 1640;
+  const COLORS = {
+    graphite: '#0D0D0F',
+    panel: '#F4F0E8',
+    gold: '#B78324',
+    goldDark: '#7A571A',
+    flame: '#E34B26',
+    text: '#171719',
+    muted: '#66615A',
+    line: '#D5C7A9',
+    light: '#F7F3EB',
+    green: '#2D7C4A',
+  };
+  const logo = await preloadEstimateAssets();
+  const pages = [];
+  let canvas;
+  let context;
+  let y = 0;
+  let pageIndex = 0;
+
+  const setFont = (size, weight = 400, family = 'Arial') => {
+    context.font = `${weight} ${size}px ${family}`;
+  };
+
+  const drawLines = (lines, x, startY, lineHeight, color = COLORS.text) => {
+    context.fillStyle = color;
+    lines.forEach((line, index) => context.fillText(line, x, startY + index * lineHeight));
+    return startY + lines.length * lineHeight;
+  };
+
+  const drawWrapped = (text, x, startY, maxWidth, options = {}) => {
+    const { size = 25, weight = 400, lineHeight = 34, color = COLORS.text, family = 'Arial' } = options;
+    setFont(size, weight, family);
+    const lines = canvasWrappedLines(context, text, maxWidth);
+    return drawLines(lines, x, startY, lineHeight, color);
+  };
+
+  const drawFooter = () => {
+    context.strokeStyle = COLORS.gold;
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(MARGIN, FOOTER_TOP);
+    context.lineTo(WIDTH - MARGIN, FOOTER_TOP);
+    context.stroke();
+    setFont(20, 700, 'Georgia');
+    context.fillStyle = COLORS.goldDark;
+    context.fillText(payload.profile.slogan || 'ГОРН', MARGIN, FOOTER_TOP + 38);
+    setFont(18, 400);
+    context.fillStyle = COLORS.muted;
+    const contacts = [payload.profile.masterName, payload.profile.phone, payload.profile.website, payload.profile.email]
+      .filter(Boolean)
+      .join(' · ');
+    context.fillText(contacts, MARGIN, FOOTER_TOP + 72);
+  };
+
+  const createPage = (continuation = false) => {
+    if (canvas) drawFooter();
+    canvas = document.createElement('canvas');
+    canvas.width = WIDTH;
+    canvas.height = HEIGHT;
+    context = canvas.getContext('2d');
+    context.fillStyle = '#FFFFFF';
+    context.fillRect(0, 0, WIDTH, HEIGHT);
+    pages.push(canvas);
+    pageIndex += 1;
+
+    context.fillStyle = COLORS.graphite;
+    context.fillRect(0, 0, WIDTH, 185);
+    if (logo) context.drawImage(logo, MARGIN, 32, 112, 112);
+    setFont(48, 700, 'Georgia');
+    context.fillStyle = '#E8C96A';
+    context.fillText('ГОРН', logo ? 220 : MARGIN, 78);
+    setFont(22, 400);
+    context.fillStyle = '#F4F0E8';
+    context.fillText('Профессиональный помощник печника', logo ? 220 : MARGIN, 116);
+    setFont(18, 700);
+    context.fillStyle = '#D4AF37';
+    context.fillText(payload.profile.region || '', logo ? 220 : MARGIN, 148);
+
+    y = 235;
+    setFont(37, 800);
+    context.fillStyle = COLORS.text;
+    context.fillText(continuation ? 'СМЕТА - ПРОДОЛЖЕНИЕ' : 'СМЕТА НА ВЫПОЛНЕНИЕ РАБОТ', MARGIN, y);
+    y += 46;
+    setFont(21, 700);
+    context.fillStyle = COLORS.goldDark;
+    context.fillText(`№ ${payload.estimate.documentNumber}`, MARGIN, y);
+    const dateText = `от ${formatDocumentDate(payload.estimate.documentDate)}`;
+    context.fillText(dateText, WIDTH - MARGIN - context.measureText(dateText).width, y);
+    y += 35;
+    return canvas;
+  };
+
+  const ensureSpace = (height) => {
+    if (y + height <= FOOTER_TOP - 35) return;
+    createPage(true);
+  };
+
+  const drawSectionHeader = (title) => {
+    ensureSpace(58);
+    context.fillStyle = '#EEE5D3';
+    context.fillRect(MARGIN, y, WIDTH - MARGIN * 2, 46);
+    setFont(22, 800);
+    context.fillStyle = COLORS.goldDark;
+    context.fillText(title, MARGIN + 16, y + 31);
+    y += 58;
+  };
+
+  const drawInfoBlock = (label, value, x, width) => {
+    setFont(16, 700);
+    context.fillStyle = COLORS.goldDark;
+    context.fillText(label.toUpperCase(), x, y);
+    drawWrapped(value || '—', x, y + 29, width, { size: 22, lineHeight: 29 });
+  };
+
+  createPage(false);
+
+  // Client and contractor information.
+  ensureSpace(185);
+  const half = (WIDTH - MARGIN * 2 - 34) / 2;
+  const infoTop = y;
+  context.strokeStyle = COLORS.line;
+  context.lineWidth = 2;
+  context.strokeRect(MARGIN, infoTop, half, 155);
+  context.strokeRect(MARGIN + half + 34, infoTop, half, 155);
+  y = infoTop + 32;
+  drawInfoBlock('Исполнитель', [payload.profile.companyName, payload.profile.masterName, payload.profile.phone, payload.profile.website].filter(Boolean).join(' · '), MARGIN + 18, half - 36);
+  y = infoTop + 32;
+  drawInfoBlock('Заказчик', [payload.client?.name, payload.client?.phone].filter(Boolean).join(' · '), MARGIN + half + 52, half - 36);
+  y = infoTop + 184;
+
+  drawSectionHeader('ОБЪЕКТ И ЗАДАЧА');
+  y = drawWrapped(`Объект: ${payload.workAddress || 'не указан'}`, MARGIN, y, WIDTH - MARGIN * 2, { size: 23, weight: 700, lineHeight: 32 });
+  y += 5;
+  y = drawWrapped(`Работа: ${payload.workTitle}`, MARGIN, y, WIDTH - MARGIN * 2, { size: 23, lineHeight: 32 });
+  if (payload.workNotes) {
+    y += 5;
+    y = drawWrapped(`Договорённости: ${payload.workNotes}`, MARGIN, y, WIDTH - MARGIN * 2, { size: 20, color: COLORS.muted, lineHeight: 29 });
+  }
+  y += 18;
+
+  const drawTableHeader = () => {
+    ensureSpace(50);
+    context.fillStyle = COLORS.graphite;
+    context.fillRect(MARGIN, y, WIDTH - MARGIN * 2, 44);
+    setFont(17, 700);
+    context.fillStyle = '#FFFFFF';
+    context.fillText('НАИМЕНОВАНИЕ', MARGIN + 16, y + 29);
+    context.fillText('КОЛ-ВО', 730, y + 29);
+    context.fillText('ЦЕНА', 900, y + 29);
+    context.fillText('СУММА', 1070, y + 29);
+    y += 44;
+  };
+
+  const drawTableRow = (item, index) => {
+    setFont(21, 400);
+    const nameLines = canvasWrappedLines(context, `${index}. ${item.name}`, 600);
+    const rowHeight = Math.max(54, nameLines.length * 29 + 18);
+    ensureSpace(rowHeight + 2);
+    context.fillStyle = index % 2 ? '#FFFFFF' : COLORS.light;
+    context.fillRect(MARGIN, y, WIDTH - MARGIN * 2, rowHeight);
+    context.strokeStyle = '#E5DCCB';
+    context.strokeRect(MARGIN, y, WIDTH - MARGIN * 2, rowHeight);
+    drawLines(nameLines, MARGIN + 16, y + 31, 29, COLORS.text);
+    setFont(19, 400);
+    context.fillStyle = COLORS.text;
+    context.fillText(estimateQuantityLabel(item), 730, y + 32);
+    const price = parseAmountNumber(item.price);
+    const sum = parseEstimateQuantity(item.quantity) * price;
+    context.fillText(formatRubles(price), 900, y + 32);
+    setFont(19, 700);
+    context.fillStyle = COLORS.goldDark;
+    context.fillText(formatRubles(sum), 1070, y + 32);
+    y += rowHeight;
+  };
+
+  let itemNo = 1;
+  const drawGroup = (title, items) => {
+    if (!items.length) return;
+    drawSectionHeader(title);
+    drawTableHeader();
+    items.forEach((item) => drawTableRow(item, itemNo++));
+    y += 15;
+  };
+
+  drawGroup('РАБОТЫ', payload.estimate.labor);
+  drawGroup('МАТЕРИАЛЫ', payload.estimate.materials);
+
+  const extras = [];
+  if (toText(payload.estimate.delivery)) extras.push({ name: 'Доставка материалов', quantity: '1', unit: 'усл.', price: payload.estimate.delivery });
+  if (toText(payload.estimate.wasteRemoval)) extras.push({ name: 'Вывоз строительного мусора', quantity: '1', unit: 'усл.', price: payload.estimate.wasteRemoval });
+  drawGroup('ДОПОЛНИТЕЛЬНО', extras);
+
+  ensureSpace(260);
+  drawSectionHeader('ИТОГОВЫЙ РАСЧЁТ');
+  const totals = [
+    ['Работы', payload.totals.laborTotal],
+    ['Материалы', payload.totals.materialsTotal],
+  ];
+  if (toText(payload.estimate.delivery)) totals.push(['Доставка', payload.totals.deliveryTotal]);
+  if (toText(payload.estimate.wasteRemoval)) totals.push(['Вывоз мусора', payload.totals.wasteRemovalTotal]);
+  totals.forEach(([label, value]) => {
+    setFont(22, 400);
+    context.fillStyle = COLORS.text;
+    context.fillText(label, MARGIN + 12, y + 28);
+    setFont(22, 700);
+    const valueText = formatRubles(value);
+    context.fillText(valueText, WIDTH - MARGIN - context.measureText(valueText).width - 12, y + 28);
+    y += 38;
+  });
+  context.strokeStyle = COLORS.gold;
+  context.lineWidth = 3;
+  context.beginPath();
+  context.moveTo(MARGIN, y + 4);
+  context.lineTo(WIDTH - MARGIN, y + 4);
+  context.stroke();
+  y += 43;
+  setFont(31, 800);
+  context.fillStyle = COLORS.goldDark;
+  context.fillText('ИТОГО', MARGIN + 12, y);
+  const grand = formatRubles(payload.totals.total);
+  context.fillText(grand, WIDTH - MARGIN - context.measureText(grand).width - 12, y);
+  y += 44;
+  if (payload.totals.prepayment) {
+    setFont(22, 600);
+    context.fillStyle = COLORS.green;
+    context.fillText(`Предоплата: ${formatRubles(payload.totals.prepayment)}`, MARGIN + 12, y);
+    y += 34;
+  }
+  setFont(23, 700);
+  context.fillStyle = COLORS.text;
+  context.fillText(`Остаток: ${formatRubles(payload.totals.balance)}`, MARGIN + 12, y);
+  y += 55;
+
+  drawSectionHeader('УСЛОВИЯ');
+  y = drawWrapped(`Срок действия сметы: до ${formatDocumentDate(payload.estimate.validUntil)}.`, MARGIN, y, WIDTH - MARGIN * 2, { size: 20, weight: 700, lineHeight: 29 });
+  y += 6;
+  y = drawWrapped(`Условия оплаты: ${payload.estimate.paymentTerms}`, MARGIN, y, WIDTH - MARGIN * 2, { size: 20, lineHeight: 29 });
+  y += 6;
+  y = drawWrapped(payload.estimate.clientNote, MARGIN, y, WIDTH - MARGIN * 2, { size: 20, lineHeight: 29, color: COLORS.muted });
+
+  drawFooter();
+  pages.forEach((page, index) => {
+    const ctx = page.getContext('2d');
+    ctx.font = '700 18px Arial';
+    ctx.fillStyle = COLORS.muted;
+    const pageText = `Страница ${index + 1} из ${pages.length}`;
+    ctx.fillText(pageText, WIDTH - MARGIN - ctx.measureText(pageText).width, FOOTER_TOP + 72);
+  });
+  return pages;
+}
+
+async function createEstimatePdfBlob() {
+  const totals = calculateWorkEstimate(state.workEstimateDraft || {});
+  if (!totals.lineCount) throw new Error('Смета пока пуста');
+  const JsPdf = window.jspdf?.jsPDF;
+  if (!JsPdf) throw new Error('Модуль PDF не загрузился. Обновите приложение и повторите.');
+  const pages = await renderEstimatePdfPages(estimateDocumentPayload());
+  const pdf = new JsPdf({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+  pages.forEach((page, index) => {
+    if (index > 0) pdf.addPage('a4', 'portrait');
+    pdf.addImage(page.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+  });
+  return pdf.output('blob');
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+async function downloadEstimatePdf() {
+  const button = $('#downloadEstimatePdfBtn');
+  if (button) button.disabled = true;
+  try {
+    const blob = await createEstimatePdfBlob();
+    downloadBlob(blob, estimatePdfFilename());
+    showToast('PDF-смета сформирована');
+  } catch (error) {
+    console.error('GORN: не удалось сформировать PDF', error);
+    window.alert(error.message || 'Не удалось сформировать PDF.');
+  } finally {
+    renderWorkEstimateSummary();
+  }
+}
+
+async function shareEstimatePdf() {
+  const button = $('#shareEstimatePdfBtn');
+  if (button) button.disabled = true;
+  try {
+    const blob = await createEstimatePdfBlob();
+    const filename = estimatePdfFilename();
+    const file = new File([blob], filename, { type: 'application/pdf' });
+    const client = currentEditingClient();
+    if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+      await navigator.share({
+        title: `Смета ГОРН для ${client?.name || 'клиента'}`,
+        text: 'Направляю смету на согласованные работы.',
+        files: [file],
+      });
+      showToast('Смета передана в меню отправки');
+    } else {
+      downloadBlob(blob, filename);
+      showToast('PDF скачан — отправьте его клиенту');
+    }
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+    console.error('GORN: не удалось поделиться PDF', error);
+    try {
+      const blob = await createEstimatePdfBlob();
+      downloadBlob(blob, estimatePdfFilename());
+      showToast('PDF скачан — отправьте его клиенту');
+    } catch (fallbackError) {
+      window.alert(fallbackError.message || 'Не удалось сформировать PDF.');
+    }
+  } finally {
+    renderWorkEstimateSummary();
+  }
 }
 
 function applyEstimateTotalToWork() {
