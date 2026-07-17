@@ -1,7 +1,7 @@
 const APP_META = {
-  version: '1.0.0',
+  version: '1.0.1',
   status: 'Stable',
-  updated: '16.07.2026',
+  updated: '17.07.2026',
 };
 
 const CLIENT_STATUSES = ['Новый', 'Связаться', 'Выезд назначен', 'В работе', 'Завершён', 'Отказ'];
@@ -3181,8 +3181,8 @@ function openCard(id, pushHistory = true) {
       <div class="meta-card"><strong>⏱ Обычно занимает</strong>${esc(card.time)}</div>
       <div class="meta-card"><strong>🛠 Ремонтопригодность</strong>${esc(card.repairability)}</div>
     </div>
-    ${copySection('📩 Готовый ответ клиенту', card.reply)}
-    ${copySection('💰 Как назвать стоимость', card.price)}
+    ${copySection('📩 Готовый ответ клиенту', card.reply, 'reply')}
+    ${copySection('💰 Как назвать стоимость', card.price, 'price')}
     ${listSection('☎️ Что спросить', card.phone)}
     ${listSection('📷 Какие фото попросить', card.photos)}
     ${listSection('🔍 Что проверить', card.check)}
@@ -3194,7 +3194,7 @@ function openCard(id, pushHistory = true) {
   });
 }
 
-function copySection(title, items = []) {
+function copySection(title, items = [], sectionKey = 'text') {
   const safeItems = toArray(items);
   if (!safeItems.length) return '';
 
@@ -3203,7 +3203,7 @@ function copySection(title, items = []) {
       <h3>${title}</h3>
       ${safeItems
         .map((item, index) => {
-          const id = `copy-${state.current.id}-${index}-${title.length}`;
+          const id = `copy-${state.current.id}-${sectionKey}-${index}`;
           return `<div class="reply" id="${esc(id)}">${esc(item)}</div><button class="copy-btn" data-copy="${esc(id)}" type="button">📋 Копировать</button>`;
         })
         .join('')}
