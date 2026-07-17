@@ -1,5 +1,5 @@
 const APP_META = {
-  version: '1.1.0',
+  version: '1.2.0',
   status: 'Stable',
   updated: '17.07.2026',
 };
@@ -335,6 +335,36 @@ function toArray(value) {
   return text ? [text] : [];
 }
 
+
+function normalizeResponseVariant(rawVariant, index = 0, prefix = 'variant') {
+  const source =
+    rawVariant && typeof rawVariant === 'object'
+      ? rawVariant
+      : { text: rawVariant };
+
+  return {
+    id: toText(source.id, `${prefix}-${index + 1}`),
+    label: toText(source.label, `Вариант ${index + 1}`),
+    text: toText(source.text || source.value),
+  };
+}
+
+function normalizeResponseVariants(rawVariants, fallbackItems = [], prefix = 'variant') {
+  const variants = Array.isArray(rawVariants)
+    ? rawVariants
+        .map((item, index) => normalizeResponseVariant(item, index, prefix))
+        .filter((item) => item.text)
+    : [];
+
+  if (variants.length) return variants;
+
+  return toArray(fallbackItems).map((text, index) => ({
+    id: `${prefix}-${index + 1}`,
+    label: index === 0 ? 'Основной вариант' : `Вариант ${index + 1}`,
+    text,
+  }));
+}
+
 function normalizeRisk(value) {
   const aliases = {
     low: 'green',
@@ -379,6 +409,17 @@ function normalizeCard(rawCard, index) {
   ARRAY_FIELDS.forEach((field) => {
     card[field] = toArray(source[field]);
   });
+
+  card.replyVariants = normalizeResponseVariants(
+    source.replyVariants,
+    card.reply,
+    'reply',
+  );
+  card.priceVariants = normalizeResponseVariants(
+    source.priceVariants,
+    card.price,
+    'price',
+  );
 
   return card;
 }
@@ -2917,6 +2958,8 @@ function buildSearchFields(card) {
       [
         ...card.reply,
         ...card.price,
+        ...card.replyVariants.map((variant) => `${variant.label} ${variant.text}`),
+        ...card.priceVariants.map((variant) => `${variant.label} ${variant.text}`),
         ...card.phone,
         ...card.photos,
         ...card.check,
@@ -3181,8 +3224,8 @@ function openCard(id, pushHistory = true) {
       <div class="meta-card"><strong>⏱ Обычно занимает</strong>${esc(card.time)}</div>
       <div class="meta-card"><strong>🛠 Ремонтопригодность</strong>${esc(card.repairability)}</div>
     </div>
-    ${copySection('📩 Готовый ответ клиенту', card.reply, 'reply')}
-    ${copySection('💰 Как назвать стоимость', card.price, 'price')}
+    ${responseVariantSection('📩 Варианты ответа клиенту', card.replyVariants, 'reply')}
+    ${responseVariantSection('💰 Варианты ответа о стоимости', card.priceVariants, 'price')}
     ${listSection('☎️ Что спросить', card.phone)}
     ${listSection('📷 Какие фото попросить', card.photos)}
     ${listSection('🔍 Что проверить', card.check)}
@@ -3190,6 +3233,81 @@ function openCard(id, pushHistory = true) {
     ${listSection('⚠️ Красные флаги', card.flags, 'flags')}`;
 
   document.querySelectorAll('[data-copy]').forEach((button) => {
+    button.onclick = () => copyText(button.dataset.copy, button);
+  });
+  bindResponseVariantSections();
+}
+
+function responseVariantSection(title, variants = [], sectionKey = 'response') {
+  const safeVariants = normalizeResponseVariants(variants, [], sectionKey);
+  if (!safeVariants.length) return '';
+
+  const groupId = `response-${state.current.id}-${sectionKey}`;
+  const tabs = safeVariants
+    .map(
+      (variant, index) => `
+        <button
+          class="response-variant-chip ${index === 0 ? 'active' : ''}"
+          data-response-tab="${esc(groupId)}"
+          data-response-index="${index}"
+          type="button"
+        >${esc(variant.label)}</button>`,
+    )
+    .join('');
+
+  const panels = safeVariants
+    .map((variant, index) => {
+      const panelId = `${groupId}-${index}`;
+      return `
+        <div
+          id="${esc(panelId)}"
+          class="reply response-variant-text ${index === 0 ? 'active' : 'hidden'}"
+          data-response-panel="${esc(groupId)}"
+          data-response-index="${index}"
+        >${esc(variant.text)}</div>`;
+    })
+    .join('');
+
+  return `
+    <section class="block response-variant-block" data-response-section="${esc(groupId)}">
+      <h3>${title}</h3>
+      <div class="response-variant-chips" role="tablist">${tabs}</div>
+      ${panels}
+      <button
+        class="copy-btn"
+        data-response-copy="${esc(groupId)}"
+        data-copy="${esc(`${groupId}-0`)}"
+        type="button"
+      >📋 Копировать выбранный вариант</button>
+    </section>`;
+}
+
+function bindResponseVariantSections() {
+  document.querySelectorAll('[data-response-tab]').forEach((button) => {
+    button.onclick = () => {
+      const groupId = button.dataset.responseTab;
+      const index = button.dataset.responseIndex;
+      const section = document.querySelector(
+        `[data-response-section="${CSS.escape(groupId)}"]`,
+      );
+      if (!section) return;
+
+      section.querySelectorAll('[data-response-tab]').forEach((item) => {
+        item.classList.toggle('active', item === button);
+      });
+
+      section.querySelectorAll('[data-response-panel]').forEach((panel) => {
+        const isActive = panel.dataset.responseIndex === index;
+        panel.classList.toggle('active', isActive);
+        panel.classList.toggle('hidden', !isActive);
+      });
+
+      const copyButton = section.querySelector('[data-response-copy]');
+      if (copyButton) copyButton.dataset.copy = `${groupId}-${index}`;
+    };
+  });
+
+  document.querySelectorAll('[data-response-copy]').forEach((button) => {
     button.onclick = () => copyText(button.dataset.copy, button);
   });
 }
