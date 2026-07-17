@@ -1,5 +1,5 @@
 const APP_META = {
-  version: '1.3.0',
+  version: '1.3.1',
   status: 'Stable',
   updated: '17.07.2026',
 };
@@ -3323,6 +3323,9 @@ async function renderEstimatePdfPages(payload) {
   y = infoTop + 184;
 
   drawSectionHeader('ОБЪЕКТ И ЗАДАЧА');
+  // Текст рисуется по базовой линии, поэтому нужен дополнительный отступ
+  // после цветной плашки, чтобы крупные буквы не заходили на заголовок.
+  y += 16;
   y = drawWrapped(`Объект: ${payload.workAddress || 'не указан'}`, MARGIN, y, WIDTH - MARGIN * 2, { size: 23, weight: 700, lineHeight: 32 });
   y += 5;
   y = drawWrapped(`Работа: ${payload.workTitle}`, MARGIN, y, WIDTH - MARGIN * 2, { size: 23, lineHeight: 32 });
@@ -3426,6 +3429,8 @@ async function renderEstimatePdfPages(payload) {
   y += 55;
 
   drawSectionHeader('УСЛОВИЯ');
+  // Такой же безопасный отступ для первой строки раздела условий.
+  y += 16;
   y = drawWrapped(`Срок действия сметы: до ${formatDocumentDate(payload.estimate.validUntil)}.`, MARGIN, y, WIDTH - MARGIN * 2, { size: 20, weight: 700, lineHeight: 29 });
   y += 6;
   y = drawWrapped(`Условия оплаты: ${payload.estimate.paymentTerms}`, MARGIN, y, WIDTH - MARGIN * 2, { size: 20, lineHeight: 29 });
