@@ -1,7 +1,7 @@
 const APP_META = {
-  version: '1.3.1',
+  version: '1.3.2',
   status: 'Stable',
-  updated: '17.07.2026',
+  updated: '18.07.2026',
 };
 
 const CLIENT_STATUSES = ['Новый', 'Связаться', 'Выезд назначен', 'В работе', 'Завершён', 'Отказ'];
@@ -2276,6 +2276,17 @@ function planWorkCard(entry) {
     </article>`;
 }
 
+function dismissSoftKeyboard() {
+  const active = document.activeElement;
+  if (
+    active &&
+    active !== document.body &&
+    typeof active.blur === 'function'
+  ) {
+    active.blur();
+  }
+}
+
 function openClientFromPlan(clientId) {
   if (!state.clients.some((client) => client.id === clientId)) {
     showToast('Клиент не найден');
@@ -2385,6 +2396,7 @@ function clientCard(client) {
 }
 
 function openClientForm(clientId = null) {
+  dismissSoftKeyboard();
   const client = clientId ? state.clients.find((item) => item.id === clientId) : null;
   state.editingClientId = client?.id || null;
   state.editingWorkId = null;
@@ -2404,11 +2416,11 @@ function openClientForm(clientId = null) {
   $('#newClientBtn').classList.add('hidden');
   closeWorkForm();
   renderWorkHistory(client);
-  $('#clientName').focus();
   window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
 function closeClientForm() {
+  dismissSoftKeyboard();
   state.editingClientId = null;
   state.editingWorkId = null;
   $('#clientForm')?.reset();
@@ -2420,6 +2432,7 @@ function closeClientForm() {
   $('#clientsTools')?.classList.remove('hidden');
   $('#newClientBtn')?.classList.remove('hidden');
   if (state.mode === 'clients') renderClients();
+  window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
 function saveClientFromForm(event) {
@@ -3533,6 +3546,7 @@ function applyEstimateTotalToWork() {
 }
 
 function openWorkForm(workId = null) {
+  dismissSoftKeyboard();
   const client = currentEditingClient();
   if (!client) return;
   const work = workId ? (client.works || []).find((item) => item.id === workId) : null;
@@ -3559,11 +3573,11 @@ function openWorkForm(workId = null) {
   $('#addWorkBtn').classList.add('hidden');
   renderWorkChecklistDraft();
   renderWorkEstimateDraft();
-  $('#workTitle').focus();
   $('#workFormWrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function closeWorkForm() {
+  dismissSoftKeyboard();
   state.editingWorkId = null;
   state.workChecklistDraft = null;
   state.workEstimateDraft = null;
@@ -3574,6 +3588,7 @@ function closeWorkForm() {
   $('#addWorkBtn')?.classList.remove('hidden');
   const client = currentEditingClient();
   if (client) renderWorkHistory(client);
+  $('#workHistoryWrap')?.scrollIntoView({ behavior: 'auto', block: 'start' });
 }
 
 function saveWorkFromForm(event) {

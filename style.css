@@ -1229,3 +1229,17 @@ textarea{
   .estimate-row{grid-template-columns:minmax(0,1fr) 52px 52px 76px 28px}
 }
 
+/* v1.3.2 — мобильная навигация без вызова клавиатуры */
+.back-screen-btn{
+  flex:0 0 auto;
+  white-space:nowrap;
+}
+@media(max-width:520px){
+  .client-form-header{
+    align-items:flex-start;
+  }
+  .back-screen-btn{
+    min-height:44px;
+    padding:10px 13px;
+  }
+}
