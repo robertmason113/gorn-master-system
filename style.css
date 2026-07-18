@@ -1266,3 +1266,17 @@ textarea{
   .work-card-actions>*{width:100%;text-align:center}
 }
 
+
+
+/* v1.5.0 — многодневные работы */
+.work-period-panel{margin:14px 0;padding:14px;border:1px solid #514126;border-radius:14px;background:linear-gradient(145deg,rgba(43,35,22,.56),rgba(24,24,27,.82))}
+.work-period-heading h4{margin:0;color:var(--gold2);font-size:17px}
+.work-period-heading p{margin:4px 0 0;color:var(--muted);font-size:12px;line-height:1.45}
+.work-period-grid{display:grid;grid-template-columns:minmax(180px,260px) minmax(260px,1fr);gap:14px;align-items:end;margin-top:2px}
+.work-weekend-toggle{display:flex;align-items:center;gap:10px;min-height:48px;margin:10px 0 0;padding:10px 12px;border:1px solid #3d3d43;border-radius:11px;background:#1d1d20;color:#f0eee8;font-weight:700;cursor:pointer}
+.work-weekend-toggle input{width:21px;height:21px;margin:0;accent-color:#d7aa31;flex:0 0 auto}
+.work-days-quick{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.work-days-quick button{border:1px solid #685326;background:#202023;color:#e8e5de;border-radius:999px;padding:8px 12px;font-weight:800;cursor:pointer}
+.work-days-quick button.active{background:linear-gradient(180deg,#e9c553,#cf9d22);color:#14110b;border-color:#e4bd4a}
+.work-period-preview{margin-top:12px;padding:11px 12px;border:1px solid #705a2b;border-radius:11px;background:rgba(9,9,11,.5);color:var(--gold2);font-weight:800;line-height:1.45}
+@media(max-width:700px){.work-period-grid{grid-template-columns:1fr}.work-days-quick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.work-days-quick button{padding:10px 6px}}

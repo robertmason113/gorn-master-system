@@ -1,5 +1,5 @@
 const APP_META = {
-  version: '1.4.1',
+  version: '1.5.0',
   status: 'Stable',
   updated: '18.07.2026',
 };
@@ -298,6 +298,72 @@ function addDaysISO(value, days = 14) {
   return localDateISO(date);
 }
 
+function normalizeWorkDaysCount(value) {
+  const count = Math.round(Number(value));
+  if (!Number.isFinite(count) || count < 1) return 1;
+  return Math.min(count, 365);
+}
+
+function isWeekendISO(value) {
+  const date = new Date(`${toText(value, localDateISO())}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return false;
+  return date.getDay() === 0 || date.getDay() === 6;
+}
+
+function workScheduleDates(work = {}) {
+  const startDate = toText(work.date, localDateISO());
+  const daysCount = normalizeWorkDaysCount(work.daysCount);
+  const skipWeekends = work.skipWeekends !== false;
+  const dates = [];
+  let cursor = startDate;
+  let guard = 0;
+
+  while (dates.length < daysCount && guard < 730) {
+    if (!skipWeekends || !isWeekendISO(cursor)) dates.push(cursor);
+    cursor = addDaysISO(cursor, 1);
+    guard += 1;
+  }
+
+  return dates.length ? dates : [startDate];
+}
+
+function workEndDate(work = {}) {
+  const dates = workScheduleDates(work);
+  return dates[dates.length - 1] || toText(work.date, localDateISO());
+}
+
+function isWorkScheduledOnDate(work, date) {
+  return workScheduleDates(work).includes(date);
+}
+
+function nextScheduledWorkDate(work, fromDate = localDateISO()) {
+  return workScheduleDates(work).find((date) => date >= fromDate) || workEndDate(work);
+}
+
+function workDayNumber(work, date = localDateISO()) {
+  const dates = workScheduleDates(work);
+  const index = dates.indexOf(date);
+  return index >= 0 ? index + 1 : 0;
+}
+
+function workPeriodText(work, includeDays = true) {
+  const dates = workScheduleDates(work);
+  const start = dates[0];
+  const end = dates[dates.length - 1];
+  const period = start === end
+    ? formatClientDate(start)
+    : `${formatClientDate(start)} — ${formatClientDate(end)}`;
+  if (!includeDays || dates.length === 1) return period;
+  return `${period} · ${dates.length} раб. дн.`;
+}
+
+function currentWorkDayText(work, date = localDateISO()) {
+  const total = normalizeWorkDaysCount(work.daysCount);
+  if (total <= 1) return '';
+  const current = workDayNumber(work, date);
+  return current ? `день ${current} из ${total}` : `${total} рабочих дней`;
+}
+
 function createEstimateDocumentNumber() {
   const date = localDateISO().replaceAll('-', '');
   const suffix = String(Date.now()).slice(-5);
@@ -517,6 +583,8 @@ function normalizeWork(rawWork, index = 0) {
     : '';
   const durationMinutes = Number(source.durationMinutes);
   const reminderMinutes = Number(source.reminderMinutes);
+  const daysCount = normalizeWorkDaysCount(source.daysCount);
+  const skipWeekends = source.skipWeekends !== false;
 
   return {
     id: toText(source.id, `WORK-${index + 1}-${Date.now()}`),
@@ -529,6 +597,8 @@ function normalizeWork(rawWork, index = 0) {
     reminderMinutes: Number.isFinite(reminderMinutes) && reminderMinutes >= 0
       ? Math.round(reminderMinutes)
       : 0,
+    daysCount,
+    skipWeekends,
     address: toText(source.address),
     status: WORK_STATUSES.includes(rawStatus) ? rawStatus : 'Планируется',
     amount: toText(source.amount),
@@ -828,6 +898,17 @@ function bindEvents() {
   $('#workForm')?.addEventListener('submit', saveWorkFromForm);
   $('#deleteWorkBtn')?.addEventListener('click', deleteEditingWork);
   $('#exportWorkCalendarBtn')?.addEventListener('click', exportWorkCalendarFromForm);
+  ['workDate', 'workDaysCount', 'workSkipWeekends'].forEach((id) => {
+    $(`#${id}`)?.addEventListener(id === 'workDaysCount' ? 'input' : 'change', updateWorkSchedulePreview);
+  });
+  document.querySelectorAll('[data-work-days]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const input = $('#workDaysCount');
+      if (!input) return;
+      input.value = String(normalizeWorkDaysCount(button.dataset.workDays));
+      updateWorkSchedulePreview();
+    });
+  });
 
   document.querySelectorAll('[data-checklist-add]').forEach((button) => {
     button.addEventListener('click', () => addWorkChecklistItem(button.dataset.checklistAdd));
@@ -2377,11 +2458,17 @@ function foldIcsLine(line) {
   return parts.join('\r\n');
 }
 
-function calendarDescription(entry) {
+function calendarDescription(entry, occurrence = {}) {
   const { clientName, clientPhone, work } = entry;
+  const totalDays = normalizeWorkDaysCount(work.daysCount);
+  const dayLabel = totalDays > 1 && occurrence.dayIndex
+    ? `День проекта: ${occurrence.dayIndex} из ${totalDays}`
+    : '';
   return [
     clientName ? `Клиент: ${clientName}` : '',
     clientPhone ? `Телефон: ${clientPhone}` : '',
+    totalDays > 1 ? `Период работ: ${workPeriodText(work, false)}` : '',
+    dayLabel,
     work.status ? `Статус: ${work.status}` : '',
     work.amount ? `Стоимость: ${work.amount}` : '',
     work.notes ? `Договорённости: ${work.notes}` : '',
@@ -2390,28 +2477,31 @@ function calendarDescription(entry) {
   ].filter((line, index, lines) => line || (index && lines[index - 1])).join('\n');
 }
 
-function buildIcsEvent(entry) {
+function buildIcsEvent(entry, occurrenceDate = entry.work.date, dayIndex = 1, totalDays = 1) {
   const { clientId, clientAddress, work } = entry;
+  const title = totalDays > 1
+    ? `ГОРН — ${work.title} — день ${dayIndex} из ${totalDays}`
+    : `ГОРН — ${work.title}`;
   const lines = [
     'BEGIN:VEVENT',
-    `UID:${escapeIcsText(`gorn-${clientId}-${work.id}@ingorn.ru`)}`,
+    `UID:${escapeIcsText(`gorn-${clientId}-${work.id}-${occurrenceDate}-${dayIndex}@ingorn.ru`)}`,
     `DTSTAMP:${icsUtcTimestamp()}`,
-    `SUMMARY:${escapeIcsText(`ГОРН — ${work.title}`)}`,
+    `SUMMARY:${escapeIcsText(title)}`,
   ];
 
   if (work.startTime) {
-    const start = new Date(`${work.date}T${work.startTime}:00`);
+    const start = new Date(`${occurrenceDate}T${work.startTime}:00`);
     const end = new Date(start.getTime() + (Number(work.durationMinutes) || 180) * 60000);
     lines.push(`DTSTART:${icsLocalDateTime(start)}`);
     lines.push(`DTEND:${icsLocalDateTime(end)}`);
   } else {
-    lines.push(`DTSTART;VALUE=DATE:${icsDate(work.date)}`);
-    lines.push(`DTEND;VALUE=DATE:${icsDate(addDaysISO(work.date, 1))}`);
+    lines.push(`DTSTART;VALUE=DATE:${icsDate(occurrenceDate)}`);
+    lines.push(`DTEND;VALUE=DATE:${icsDate(addDaysISO(occurrenceDate, 1))}`);
   }
 
   const address = work.address || clientAddress;
   if (address) lines.push(`LOCATION:${escapeIcsText(address)}`);
-  lines.push(`DESCRIPTION:${escapeIcsText(calendarDescription(entry))}`);
+  lines.push(`DESCRIPTION:${escapeIcsText(calendarDescription(entry, { dayIndex, totalDays }))}`);
   lines.push('STATUS:CONFIRMED');
 
   if (work.startTime && Number(work.reminderMinutes) > 0) {
@@ -2427,7 +2517,10 @@ function buildIcsEvent(entry) {
 }
 
 function buildIcsCalendar(entries, calendarName = 'План работ ГОРН') {
-  const events = entries.map(buildIcsEvent).join('\r\n');
+  const events = entries.flatMap((entry) => {
+    const dates = workScheduleDates(entry.work);
+    return dates.map((date, index) => buildIcsEvent(entry, date, index + 1, dates.length));
+  }).join('\r\n');
   return [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -2508,6 +2601,8 @@ function workCalendarEntryFromForm() {
     startTime: $('#workStartTime')?.value || '',
     durationMinutes: Number($('#workDurationMinutes')?.value) || 180,
     reminderMinutes: Number($('#workReminderMinutes')?.value) || 0,
+    daysCount: normalizeWorkDaysCount($('#workDaysCount')?.value),
+    skipWeekends: Boolean($('#workSkipWeekends')?.checked),
     address: $('#workAddress')?.value || client.address,
     status: $('#workStatus')?.value || 'Планируется',
     amount: $('#workAmount')?.value || '',
@@ -2593,19 +2688,26 @@ function renderPlan() {
   });
 
   const todayEntries = visibleEntries
-    .filter((entry) => isActivePlanWork(entry.work) && entry.work.date === today)
+    .filter((entry) => isActivePlanWork(entry.work) && isWorkScheduledOnDate(entry.work, today))
     .sort(comparePlanEntries);
 
   const overdueEntries = visibleEntries
-    .filter((entry) => isActivePlanWork(entry.work) && entry.work.date < today)
+    .filter((entry) => isActivePlanWork(entry.work) && workEndDate(entry.work) < today)
     .sort((a, b) =>
-      String(a.work.date).localeCompare(String(b.work.date)) ||
+      String(workEndDate(a.work)).localeCompare(String(workEndDate(b.work))) ||
       String(b.work.updatedAt).localeCompare(String(a.work.updatedAt)),
     );
 
   const upcomingEntries = visibleEntries
-    .filter((entry) => isActivePlanWork(entry.work) && entry.work.date > today)
-    .sort(comparePlanEntries);
+    .filter((entry) =>
+      isActivePlanWork(entry.work) &&
+      !isWorkScheduledOnDate(entry.work, today) &&
+      workEndDate(entry.work) >= today
+    )
+    .sort((a, b) =>
+      String(nextScheduledWorkDate(a.work, today)).localeCompare(String(nextScheduledWorkDate(b.work, today))) ||
+      comparePlanEntries(a, b)
+    );
 
   const plannedAmount = allEntries
     .filter((entry) => entry.work.status === 'Планируется')
@@ -2614,10 +2716,10 @@ function renderPlan() {
     .filter((entry) => entry.work.status === 'Завершено')
     .reduce((total, entry) => total + parseAmountNumber(entry.work.amount), 0);
   const allTodayCount = allEntries.filter(
-    (entry) => isActivePlanWork(entry.work) && entry.work.date === today,
+    (entry) => isActivePlanWork(entry.work) && isWorkScheduledOnDate(entry.work, today),
   ).length;
   const allOverdueCount = allEntries.filter(
-    (entry) => isActivePlanWork(entry.work) && entry.work.date < today,
+    (entry) => isActivePlanWork(entry.work) && workEndDate(entry.work) < today,
   ).length;
 
   $('#planTodayCount').textContent = String(allTodayCount);
@@ -2687,7 +2789,8 @@ function planWorkCard(entry) {
   const address = work.address || clientAddress;
   const checklist = workChecklistProgress(work.checklist);
   const details = [
-    work.date ? `🗓 ${esc(formatClientDate(work.date))}` : '',
+    work.date ? `🗓 ${esc(workPeriodText(work))}` : '',
+    currentWorkDayText(work) ? `🏗 ${esc(currentWorkDayText(work))}` : '',
     work.startTime ? `🕒 ${esc(work.startTime)}` : '',
     clientName ? `👤 ${esc(clientName)}` : '',
     address ? `📍 ${esc(address)}` : '',
@@ -2988,7 +3091,8 @@ function workCard(work) {
   const estimate = calculateWorkEstimate(work.estimate);
   const shownAmount = work.amount || (estimate.total ? formatRubles(estimate.total) : '');
   const details = [
-    work.date ? `🗓 ${esc(formatClientDate(work.date))}` : '',
+    work.date ? `🗓 ${esc(workPeriodText(work))}` : '',
+    currentWorkDayText(work) ? `🏗 ${esc(currentWorkDayText(work))}` : '',
     work.startTime ? `🕒 ${esc(work.startTime)}` : '',
     work.address ? `📍 ${esc(work.address)}` : '',
     shownAmount ? `💰 ${esc(shownAmount)}` : '',
@@ -3995,6 +4099,25 @@ function applyEstimateTotalToWork() {
   showToast('Итог сметы подставлен');
 }
 
+function updateWorkSchedulePreview() {
+  const preview = $('#workPeriodPreview');
+  if (!preview) return;
+  const work = normalizeWork({
+    date: $('#workDate')?.value || localDateISO(),
+    daysCount: normalizeWorkDaysCount($('#workDaysCount')?.value),
+    skipWeekends: Boolean($('#workSkipWeekends')?.checked),
+  });
+  const dates = workScheduleDates(work);
+  const weekendNote = work.skipWeekends && dates.length > 1 ? ' · выходные пропускаются' : '';
+  preview.textContent = dates.length === 1
+    ? `Работа запланирована на ${formatClientDate(dates[0])}`
+    : `Период: ${formatClientDate(dates[0])} — ${formatClientDate(dates[dates.length - 1])} · ${dates.length} рабочих дней${weekendNote}`;
+
+  document.querySelectorAll('[data-work-days]').forEach((button) => {
+    button.classList.toggle('active', Number(button.dataset.workDays) === dates.length);
+  });
+}
+
 function openWorkForm(workId = null) {
   dismissSoftKeyboard();
   const client = currentEditingClient();
@@ -4014,6 +4137,8 @@ function openWorkForm(workId = null) {
   $('#workStartTime').value = work?.startTime || '';
   $('#workDurationMinutes').value = String(work?.durationMinutes || 180);
   $('#workReminderMinutes').value = String(work ? work.reminderMinutes : 60);
+  $('#workDaysCount').value = String(work?.daysCount || 1);
+  $('#workSkipWeekends').checked = work ? work.skipWeekends !== false : true;
   $('#workAddress').value = work?.address || client.address || '';
   $('#workStatus').value = work?.status || 'Планируется';
   $('#workAmount').value = work?.amount || '';
@@ -4026,6 +4151,7 @@ function openWorkForm(workId = null) {
   $('#addWorkBtn').classList.add('hidden');
   renderWorkChecklistDraft();
   renderWorkEstimateDraft();
+  updateWorkSchedulePreview();
   $('#workFormWrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -4077,6 +4203,8 @@ function saveWorkFromForm(event) {
       startTime: $('#workStartTime').value || '',
       durationMinutes: Number($('#workDurationMinutes').value) || 180,
       reminderMinutes: Number($('#workReminderMinutes').value) || 0,
+      daysCount: normalizeWorkDaysCount($('#workDaysCount').value),
+      skipWeekends: Boolean($('#workSkipWeekends').checked),
       address: $('#workAddress').value,
       status: $('#workStatus').value,
       amount: estimateTotals.lineCount ? formatRubles(estimateTotals.total) : $('#workAmount').value,
@@ -4293,8 +4421,8 @@ function dashboardMetrics() {
   return {
     clientsTotal: state.clients.length,
     activeClients: state.clients.filter((client) => activeClientStatuses.has(client.status)).length,
-    todayCount: activeEntries.filter((entry) => entry.work.date === today).length,
-    overdueCount: activeEntries.filter((entry) => entry.work.date && entry.work.date < today).length,
+    todayCount: activeEntries.filter((entry) => isWorkScheduledOnDate(entry.work, today)).length,
+    overdueCount: activeEntries.filter((entry) => entry.work.date && workEndDate(entry.work) < today).length,
     plannedWorks: plannedEntries.length,
     plannedAmount: plannedEntries.reduce(
       (total, entry) => total + parseAmountNumber(entry.work.amount),
@@ -4312,10 +4440,13 @@ function collectDashboardAttention() {
   const today = localDateISO();
   const workItems = collectPlanEntries()
     .filter((entry) => isActivePlanWork(entry.work))
-    .filter((entry) => entry.work.date && entry.work.date <= today)
+    .filter((entry) =>
+      entry.work.date &&
+      (workEndDate(entry.work) < today || isWorkScheduledOnDate(entry.work, today))
+    )
     .map((entry) => ({
-      type: entry.work.date < today ? 'overdue' : 'today',
-      priority: entry.work.date < today ? 0 : 1,
+      type: workEndDate(entry.work) < today ? 'overdue' : 'today',
+      priority: workEndDate(entry.work) < today ? 0 : 1,
       clientId: entry.clientId,
       clientName: entry.clientName,
       phone: entry.clientPhone,

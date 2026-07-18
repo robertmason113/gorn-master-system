@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="ГОРН">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="manifest.webmanifest?v=1.4.1">
+    <link rel="manifest" href="manifest.webmanifest?v=1.5.0">
     <link rel="icon" href="icon-192.png" type="image/png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <link rel="stylesheet" href="style.css?v=1.4.1">
+    <link rel="stylesheet" href="style.css?v=1.5.0">
     <title>ГОРН MASTER SYSTEM</title>
   </head>
   <body>
@@ -21,7 +21,7 @@
         <div>
           <h1>ГОРН</h1>
           <p>Профессиональный помощник печника</p>
-          <div id="versionLine" class="version-line">v1.4.1 • Stable • 18.07.2026</div>
+          <div id="versionLine" class="version-line">v1.5.0 • Stable • 18.07.2026</div>
         </div>
       </div>
       <input id="search" type="search" placeholder="Поиск: дымит, кирпич, чистка...">
@@ -307,11 +307,39 @@
                   </label>
                 </div>
 
+                <section class="work-period-panel" aria-labelledby="workPeriodTitle">
+                  <div class="work-period-heading">
+                    <div>
+                      <h4 id="workPeriodTitle">Срок выполнения</h4>
+                      <p>Для ремонта оставьте 1 день. Для строительства укажите нужное количество рабочих дней.</p>
+                    </div>
+                  </div>
+                  <div class="work-period-grid">
+                    <label class="form-field">
+                      <span>Количество рабочих дней</span>
+                      <input id="workDaysCount" type="number" min="1" max="365" step="1" inputmode="numeric" value="1">
+                    </label>
+                    <label class="work-weekend-toggle">
+                      <input id="workSkipWeekends" type="checkbox" checked>
+                      <span>Пропускать субботу и воскресенье</span>
+                    </label>
+                  </div>
+                  <div class="work-days-quick" aria-label="Быстрый выбор количества дней">
+                    <button type="button" data-work-days="1">1 день</button>
+                    <button type="button" data-work-days="2">2 дня</button>
+                    <button type="button" data-work-days="3">3 дня</button>
+                    <button type="button" data-work-days="5">5 дней</button>
+                    <button type="button" data-work-days="7">7 дней</button>
+                    <button type="button" data-work-days="14">14 дней</button>
+                  </div>
+                  <div id="workPeriodPreview" class="work-period-preview" aria-live="polite"></div>
+                </section>
+
                 <section class="work-calendar-panel" aria-labelledby="workCalendarTitle">
                   <div class="work-calendar-heading">
                     <div>
                       <h4 id="workCalendarTitle">Календарь и напоминание</h4>
-                      <p>Без времени запись добавится как событие на весь день.</p>
+                      <p>Для многодневной работы создаётся отдельное событие на каждый рабочий день. Без времени — на весь день.</p>
                     </div>
                     <button id="exportWorkCalendarBtn" class="secondary-btn calendar-export-btn" type="button">🗓 Добавить в календарь</button>
                   </div>
@@ -321,7 +349,7 @@
                       <input id="workStartTime" type="time">
                     </label>
                     <label class="form-field">
-                      <span>Продолжительность</span>
+                      <span>Продолжительность рабочего дня</span>
                       <select id="workDurationMinutes">
                         <option value="60">1 час</option>
                         <option value="90">1,5 часа</option>
@@ -590,7 +618,7 @@
           <img src="icon-192.png" alt="ГОРН">
           <h2>ГОРН MASTER SYSTEM</h2>
           <p>Профессиональный помощник печника</p>
-          <div id="aboutVersion" class="about-version">Версия 1.4.1 Stable</div>
+          <div id="aboutVersion" class="about-version">Версия 1.5.0 Stable</div>
           <p id="aboutUpdated">Обновлено: 18.07.2026</p>
           <h3>Первая стабильная версия</h3>
           <ul>
@@ -700,6 +728,6 @@
 
     <div id="toast" class="toast">Скопировано</div>
     <script src="vendor/jspdf.umd.min.js?v=4.2.1"></script>
-    <script src="app.js?v=1.4.1"></script>
+    <script src="app.js?v=1.5.0"></script>
   </body>
 </html>
