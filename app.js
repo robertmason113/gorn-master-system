@@ -1,5 +1,5 @@
 const APP_META = {
-  version: '1.3.2',
+  version: '1.4.0',
   status: 'Stable',
   updated: '18.07.2026',
 };
@@ -511,11 +511,23 @@ function normalizeWork(rawWork, index = 0) {
   const source = rawWork && typeof rawWork === 'object' ? rawWork : {};
   const createdAt = toText(source.createdAt, new Date().toISOString());
   const rawStatus = toText(source.status, 'Планируется');
+  const startTime = /^\d{2}:\d{2}$/.test(toText(source.startTime))
+    ? toText(source.startTime)
+    : '';
+  const durationMinutes = Number(source.durationMinutes);
+  const reminderMinutes = Number(source.reminderMinutes);
 
   return {
     id: toText(source.id, `WORK-${index + 1}-${Date.now()}`),
     title: toText(source.title, 'Работа без названия'),
     date: toText(source.date, localDateISO()),
+    startTime,
+    durationMinutes: Number.isFinite(durationMinutes) && durationMinutes > 0
+      ? Math.round(durationMinutes)
+      : 180,
+    reminderMinutes: Number.isFinite(reminderMinutes) && reminderMinutes >= 0
+      ? Math.round(reminderMinutes)
+      : 0,
     address: toText(source.address),
     status: WORK_STATUSES.includes(rawStatus) ? rawStatus : 'Планируется',
     amount: toText(source.amount),
@@ -769,6 +781,7 @@ function bindEvents() {
   });
   $('#dashboardPlanBtn')?.addEventListener('click', () => navigate('plan'));
   $('#dashboardClientsBtn')?.addEventListener('click', () => navigate('clients'));
+  $('#exportPlanCalendarBtn')?.addEventListener('click', exportPlanCalendar);
   $('#dashboardBackupBtn')?.addEventListener('click', exportBackup);
   $('#dashboardAttentionPlanBtn')?.addEventListener('click', () => navigate('plan'));
   $('#dashboardRefreshBtn')?.addEventListener('click', () => {
@@ -813,6 +826,7 @@ function bindEvents() {
   $('#closeWorkFormBtn')?.addEventListener('click', closeWorkForm);
   $('#workForm')?.addEventListener('submit', saveWorkFromForm);
   $('#deleteWorkBtn')?.addEventListener('click', deleteEditingWork);
+  $('#exportWorkCalendarBtn')?.addEventListener('click', exportWorkCalendarFromForm);
 
   document.querySelectorAll('[data-checklist-add]').forEach((button) => {
     button.addEventListener('click', () => addWorkChecklistItem(button.dataset.checklistAdd));
@@ -2131,6 +2145,226 @@ function formatRubles(value) {
   return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(amount)} ₽`;
 }
 
+
+function comparePlanEntries(a, b) {
+  return String(a.work.date).localeCompare(String(b.work.date)) ||
+    String(a.work.startTime || '99:99').localeCompare(String(b.work.startTime || '99:99')) ||
+    String(b.work.updatedAt).localeCompare(String(a.work.updatedAt));
+}
+
+function calendarSafeFilename(value, fallback = 'событие') {
+  const cleaned = toText(value, fallback)
+    .replace(/[\\/:*?\"<>|]+/g, '-')
+    .replace(/\s+/g, '_')
+    .slice(0, 80);
+  return cleaned || fallback;
+}
+
+function escapeIcsText(value) {
+  return toText(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/\r?\n/g, '\\n')
+    .replace(/,/g, '\\,')
+    .replace(/;/g, '\\;');
+}
+
+function icsDate(value) {
+  return toText(value).replaceAll('-', '');
+}
+
+function icsLocalDateTime(date) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}T${pad(date.getHours())}${pad(date.getMinutes())}00`;
+}
+
+function icsUtcTimestamp(date = new Date()) {
+  return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+}
+
+function foldIcsLine(line) {
+  const width = 72;
+  if (line.length <= width) return line;
+  const parts = [];
+  for (let index = 0; index < line.length; index += width) {
+    parts.push(`${index ? ' ' : ''}${line.slice(index, index + width)}`);
+  }
+  return parts.join('\r\n');
+}
+
+function calendarDescription(entry) {
+  const { clientName, clientPhone, work } = entry;
+  return [
+    clientName ? `Клиент: ${clientName}` : '',
+    clientPhone ? `Телефон: ${clientPhone}` : '',
+    work.status ? `Статус: ${work.status}` : '',
+    work.amount ? `Стоимость: ${work.amount}` : '',
+    work.notes ? `Договорённости: ${work.notes}` : '',
+    '',
+    'ГОРН — Там, где рождается тепло дома.',
+  ].filter((line, index, lines) => line || (index && lines[index - 1])).join('\n');
+}
+
+function buildIcsEvent(entry) {
+  const { clientId, clientAddress, work } = entry;
+  const lines = [
+    'BEGIN:VEVENT',
+    `UID:${escapeIcsText(`gorn-${clientId}-${work.id}@ingorn.ru`)}`,
+    `DTSTAMP:${icsUtcTimestamp()}`,
+    `SUMMARY:${escapeIcsText(`ГОРН — ${work.title}`)}`,
+  ];
+
+  if (work.startTime) {
+    const start = new Date(`${work.date}T${work.startTime}:00`);
+    const end = new Date(start.getTime() + (Number(work.durationMinutes) || 180) * 60000);
+    lines.push(`DTSTART:${icsLocalDateTime(start)}`);
+    lines.push(`DTEND:${icsLocalDateTime(end)}`);
+  } else {
+    lines.push(`DTSTART;VALUE=DATE:${icsDate(work.date)}`);
+    lines.push(`DTEND;VALUE=DATE:${icsDate(addDaysISO(work.date, 1))}`);
+  }
+
+  const address = work.address || clientAddress;
+  if (address) lines.push(`LOCATION:${escapeIcsText(address)}`);
+  lines.push(`DESCRIPTION:${escapeIcsText(calendarDescription(entry))}`);
+  lines.push('STATUS:CONFIRMED');
+
+  if (work.startTime && Number(work.reminderMinutes) > 0) {
+    lines.push('BEGIN:VALARM');
+    lines.push(`TRIGGER:-PT${Math.round(Number(work.reminderMinutes))}M`);
+    lines.push('ACTION:DISPLAY');
+    lines.push(`DESCRIPTION:${escapeIcsText(`Напоминание ГОРН: ${work.title}`)}`);
+    lines.push('END:VALARM');
+  }
+
+  lines.push('END:VEVENT');
+  return lines.map(foldIcsLine).join('\r\n');
+}
+
+function buildIcsCalendar(entries, calendarName = 'План работ ГОРН') {
+  const events = entries.map(buildIcsEvent).join('\r\n');
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//GORN//MASTER SYSTEM//RU',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    `X-WR-CALNAME:${escapeIcsText(calendarName)}`,
+    events,
+    'END:VCALENDAR',
+    '',
+  ].join('\r\n');
+}
+
+async function shareCalendarFile(content, filename, title) {
+  const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
+  const file = new File([blob], filename, { type: 'text/calendar' });
+
+  try {
+    if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+      await navigator.share({
+        title,
+        text: 'Событие из ГОРН MASTER SYSTEM',
+        files: [file],
+      });
+      showToast('Календарь передан в меню отправки');
+      return;
+    }
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+    console.warn('GORN: меню отправки календаря недоступно', error);
+  }
+
+  downloadBlob(blob, filename);
+  showToast('Файл календаря сформирован');
+}
+
+function findCalendarEntry(clientId, workId) {
+  const client = state.clients.find((item) => item.id === clientId);
+  const work = client?.works?.find((item) => item.id === workId);
+  if (!client || !work) return null;
+  return {
+    clientId: client.id,
+    clientName: client.name,
+    clientPhone: client.phone,
+    clientAddress: client.address,
+    clientStatus: client.status,
+    work,
+  };
+}
+
+async function exportSavedWorkCalendar(clientId, workId) {
+  const entry = findCalendarEntry(clientId, workId);
+  if (!entry) {
+    showToast('Работа не найдена');
+    return;
+  }
+  const filename = `GORN_${calendarSafeFilename(entry.clientName)}_${calendarSafeFilename(entry.work.title)}_${entry.work.date}.ics`;
+  await shareCalendarFile(
+    buildIcsCalendar([entry], `ГОРН — ${entry.work.title}`),
+    filename,
+    `ГОРН — ${entry.work.title}`,
+  );
+}
+
+function workCalendarEntryFromForm() {
+  const client = currentEditingClient();
+  if (!client) return null;
+  const title = toText($('#workTitle')?.value);
+  if (!title) {
+    showToast('Укажите вид работы');
+    return null;
+  }
+
+  const work = normalizeWork({
+    id: state.editingWorkId || `DRAFT-${Date.now()}`,
+    title,
+    date: $('#workDate')?.value || localDateISO(),
+    startTime: $('#workStartTime')?.value || '',
+    durationMinutes: Number($('#workDurationMinutes')?.value) || 180,
+    reminderMinutes: Number($('#workReminderMinutes')?.value) || 0,
+    address: $('#workAddress')?.value || client.address,
+    status: $('#workStatus')?.value || 'Планируется',
+    amount: $('#workAmount')?.value || '',
+    notes: $('#workNotes')?.value || '',
+  });
+
+  return {
+    clientId: client.id,
+    clientName: client.name,
+    clientPhone: client.phone,
+    clientAddress: client.address,
+    clientStatus: client.status,
+    work,
+  };
+}
+
+async function exportWorkCalendarFromForm() {
+  dismissSoftKeyboard();
+  const entry = workCalendarEntryFromForm();
+  if (!entry) return;
+  const filename = `GORN_${calendarSafeFilename(entry.clientName)}_${calendarSafeFilename(entry.work.title)}_${entry.work.date}.ics`;
+  await shareCalendarFile(
+    buildIcsCalendar([entry], `ГОРН — ${entry.work.title}`),
+    filename,
+    `ГОРН — ${entry.work.title}`,
+  );
+}
+
+async function exportPlanCalendar() {
+  const entries = collectPlanEntries()
+    .filter((entry) => isActivePlanWork(entry.work))
+    .sort(comparePlanEntries);
+  if (!entries.length) {
+    showToast('В плане пока нет активных работ');
+    return;
+  }
+  await shareCalendarFile(
+    buildIcsCalendar(entries, 'План работ ГОРН'),
+    `GORN_План_работ_${localDateISO()}.ics`,
+    'План работ ГОРН',
+  );
+}
+
 function collectPlanEntries() {
   return state.clients.flatMap((client) =>
     (client.works || []).map((work) => ({
@@ -2163,6 +2397,7 @@ function renderPlan() {
       entry.clientStatus,
       entry.work.title,
       entry.work.date,
+      entry.work.startTime,
       entry.work.address,
       entry.work.status,
       entry.work.amount,
@@ -2173,7 +2408,7 @@ function renderPlan() {
 
   const todayEntries = visibleEntries
     .filter((entry) => isActivePlanWork(entry.work) && entry.work.date === today)
-    .sort((a, b) => String(b.work.updatedAt).localeCompare(String(a.work.updatedAt)));
+    .sort(comparePlanEntries);
 
   const overdueEntries = visibleEntries
     .filter((entry) => isActivePlanWork(entry.work) && entry.work.date < today)
@@ -2184,10 +2419,7 @@ function renderPlan() {
 
   const upcomingEntries = visibleEntries
     .filter((entry) => isActivePlanWork(entry.work) && entry.work.date > today)
-    .sort((a, b) =>
-      String(a.work.date).localeCompare(String(b.work.date)) ||
-      String(b.work.updatedAt).localeCompare(String(a.work.updatedAt)),
-    );
+    .sort(comparePlanEntries);
 
   const plannedAmount = allEntries
     .filter((entry) => entry.work.status === 'Планируется')
@@ -2207,6 +2439,17 @@ function renderPlan() {
   $('#planPlannedAmount').textContent = formatRubles(plannedAmount);
   $('#planCompletedAmount').textContent = formatRubles(completedAmount);
 
+  const activeCalendarEntries = allEntries
+    .filter((entry) => isActivePlanWork(entry.work))
+    .sort(comparePlanEntries);
+  const exportPlanButton = $('#exportPlanCalendarBtn');
+  if (exportPlanButton) {
+    exportPlanButton.disabled = activeCalendarEntries.length === 0;
+    exportPlanButton.textContent = activeCalendarEntries.length
+      ? `🗓 В календарь (${activeCalendarEntries.length})`
+      : '🗓 В календарь';
+  }
+
   renderPlanSection('Today', todayEntries, tokens.length > 0);
   renderPlanSection('Overdue', overdueEntries, tokens.length > 0);
   renderPlanSection('Upcoming', upcomingEntries, tokens.length > 0);
@@ -2215,6 +2458,15 @@ function renderPlan() {
     button.onclick = (event) => {
       event.stopPropagation();
       openClientFromPlan(button.dataset.planClientId);
+    };
+  });
+  document.querySelectorAll('[data-plan-calendar-client-id]').forEach((button) => {
+    button.onclick = (event) => {
+      event.stopPropagation();
+      exportSavedWorkCalendar(
+        button.dataset.planCalendarClientId,
+        button.dataset.planCalendarWorkId,
+      );
     };
   });
 }
@@ -2250,6 +2502,7 @@ function planWorkCard(entry) {
   const checklist = workChecklistProgress(work.checklist);
   const details = [
     work.date ? `🗓 ${esc(formatClientDate(work.date))}` : '',
+    work.startTime ? `🕒 ${esc(work.startTime)}` : '',
     clientName ? `👤 ${esc(clientName)}` : '',
     address ? `📍 ${esc(address)}` : '',
     work.amount ? `💰 ${esc(work.amount)}` : '',
@@ -2271,6 +2524,7 @@ function planWorkCard(entry) {
       </div>
       <div class="plan-work-actions">
         ${phoneHref ? `<a class="client-call" href="tel:${esc(phoneHref)}">Позвонить</a>` : ''}
+        <button class="calendar-action-btn" data-plan-calendar-client-id="${esc(clientId)}" data-plan-calendar-work-id="${esc(work.id)}" type="button">🗓 В календарь</button>
         <button class="client-open-btn" data-plan-client-id="${esc(clientId)}" type="button">Открыть клиента</button>
       </div>
     </article>`;
@@ -2535,6 +2789,12 @@ function renderWorkHistory(client = currentEditingClient()) {
   document.querySelectorAll('[data-work-id]').forEach((element) => {
     element.onclick = () => openWorkForm(element.dataset.workId);
   });
+  document.querySelectorAll('[data-work-calendar-id]').forEach((button) => {
+    button.onclick = (event) => {
+      event.stopPropagation();
+      exportSavedWorkCalendar(state.editingClientId, button.dataset.workCalendarId);
+    };
+  });
 }
 
 function workCard(work) {
@@ -2543,6 +2803,7 @@ function workCard(work) {
   const shownAmount = work.amount || (estimate.total ? formatRubles(estimate.total) : '');
   const details = [
     work.date ? `🗓 ${esc(formatClientDate(work.date))}` : '',
+    work.startTime ? `🕒 ${esc(work.startTime)}` : '',
     work.address ? `📍 ${esc(work.address)}` : '',
     shownAmount ? `💰 ${esc(shownAmount)}` : '',
     estimate.lineCount ? `🧾 ${estimate.lineCount}` : '',
@@ -2566,7 +2827,10 @@ function workCard(work) {
         <span class="work-status ${esc(statusClass)}">${esc(work.status)}</span>
       </div>
       ${work.notes ? `<div class="work-notes-preview">${esc(work.notes)}</div>` : ''}
-      <button class="work-open-btn" type="button">Открыть запись</button>
+      <div class="work-card-actions">
+        <button class="calendar-action-btn" data-work-calendar-id="${esc(work.id)}" type="button">🗓 В календарь</button>
+        <button class="work-open-btn" type="button">Открыть запись</button>
+      </div>
     </article>`;
 }
 
@@ -3561,6 +3825,9 @@ function openWorkForm(workId = null) {
   $('#workFormTitle').textContent = work ? 'Запись о работе' : 'Новая работа';
   $('#workTitle').value = work?.title || '';
   $('#workDate').value = work?.date || localDateISO();
+  $('#workStartTime').value = work?.startTime || '';
+  $('#workDurationMinutes').value = String(work?.durationMinutes || 180);
+  $('#workReminderMinutes').value = String(work ? work.reminderMinutes : 60);
   $('#workAddress').value = work?.address || client.address || '';
   $('#workStatus').value = work?.status || 'Планируется';
   $('#workAmount').value = work?.amount || '';
@@ -3621,6 +3888,9 @@ function saveWorkFromForm(event) {
       id: existing?.id || createWorkId(),
       title,
       date: $('#workDate').value || localDateISO(),
+      startTime: $('#workStartTime').value || '',
+      durationMinutes: Number($('#workDurationMinutes').value) || 180,
+      reminderMinutes: Number($('#workReminderMinutes').value) || 0,
       address: $('#workAddress').value,
       status: $('#workStatus').value,
       amount: estimateTotals.lineCount ? formatRubles(estimateTotals.total) : $('#workAmount').value,

@@ -1243,3 +1243,26 @@ textarea{
     padding:10px 13px;
   }
 }
+
+/* v1.4.0 — календарь и напоминания */
+.plan-header .calendar-export-btn{flex:0 0 auto;white-space:nowrap}
+.calendar-export-btn:disabled{opacity:.45;cursor:not-allowed}
+.work-calendar-panel{margin:14px 0;padding:14px;border:1px solid #514126;border-radius:14px;background:linear-gradient(145deg,rgba(43,35,22,.62),rgba(24,24,27,.84))}
+.work-calendar-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.work-calendar-heading h4{margin:0;color:var(--gold2);font-size:17px}
+.work-calendar-heading p{margin:4px 0 0;color:var(--muted);font-size:12px;line-height:1.4}
+.work-calendar-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:4px}
+.work-calendar-grid .form-field{margin:10px 0 0}
+.work-card-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.calendar-action-btn{border:1px solid #735B29;background:#1D1D20;color:var(--gold2);border-radius:10px;padding:9px 12px;font-weight:800;cursor:pointer;white-space:nowrap}
+.calendar-action-btn:active{transform:scale(.985)}
+@media(max-width:760px){
+  .plan-header{flex-direction:column}
+  .plan-header .calendar-export-btn{width:100%}
+  .work-calendar-heading{flex-direction:column}
+  .work-calendar-heading .calendar-export-btn{width:100%}
+  .work-calendar-grid{grid-template-columns:1fr}
+  .work-card-actions{flex-direction:column}
+  .work-card-actions>*{width:100%;text-align:center}
+}
+
