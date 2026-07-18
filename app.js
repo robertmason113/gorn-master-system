@@ -1,5 +1,5 @@
 const APP_META = {
-  version: '1.4.0',
+  version: '1.4.1',
   status: 'Stable',
   updated: '18.07.2026',
 };
@@ -190,6 +190,7 @@ const CLOUD_SYNC_ENDPOINT = '/.netlify/functions/gorn-sync';
 const CLOUD_SYNC_CODE_KEY = 'gornCloudSyncCode';
 const CLOUD_SYNC_UPDATED_KEY = 'gornDataUpdatedAt';
 const CLOUD_SYNC_LAST_SYNC_KEY = 'gornCloudLastSyncedAt';
+const CLOUD_SYNC_LAST_FINGERPRINT_KEY = 'gornCloudLastFingerprint';
 const CLOUD_SYNC_DEVICE_KEY = 'gornCloudDeviceId';
 const CLOUD_SYNC_MIN_CODE_LENGTH = 16;
 const CLOUD_SYNC_PBKDF2_ITERATIONS = 120000;
@@ -915,6 +916,21 @@ function bindEvents() {
       renderCloudSyncInfo();
     }
   });
+  $('#cloudRestorePreviousBtn')?.addEventListener('click', async () => {
+    if (cloudSyncInProgress) return;
+    setCloudSyncBusy(true);
+    setCloudSyncStatus('Проверка предыдущей облачной копии…');
+    try {
+      await downloadCloudDatabase({ manual: true, previous: true });
+    } catch (error) {
+      console.error('ГОРН: ошибка восстановления облачной копии', error);
+      setCloudSyncStatus(error.message || 'Не удалось восстановить облачную копию', 'error');
+      window.alert(error.message || 'Не удалось восстановить облачную копию.');
+    } finally {
+      setCloudSyncBusy(false);
+      renderCloudSyncInfo();
+    }
+  });
   $('#toggleCloudSyncCodeBtn')?.addEventListener('click', () => {
     const input = $('#cloudSyncCodeInput');
     const button = $('#toggleCloudSyncCodeBtn');
@@ -1248,9 +1264,21 @@ function getCloudLastSyncedAt() {
   return readStoredText(CLOUD_SYNC_LAST_SYNC_KEY);
 }
 
-function setCloudLastSyncedAt(value) {
+function getCloudLastFingerprint() {
+  return readStoredText(CLOUD_SYNC_LAST_FINGERPRINT_KEY);
+}
+
+function setCloudSyncPoint(updatedAt, fingerprint) {
   try {
-    localStorage.setItem(CLOUD_SYNC_LAST_SYNC_KEY, toText(value, new Date().toISOString()));
+    localStorage.setItem(CLOUD_SYNC_LAST_SYNC_KEY, toText(updatedAt, new Date().toISOString()));
+    if (fingerprint) localStorage.setItem(CLOUD_SYNC_LAST_FINGERPRINT_KEY, fingerprint);
+  } catch (error) {}
+}
+
+function clearCloudSyncPoint() {
+  try {
+    localStorage.removeItem(CLOUD_SYNC_LAST_SYNC_KEY);
+    localStorage.removeItem(CLOUD_SYNC_LAST_FINGERPRINT_KEY);
   } catch (error) {}
 }
 
@@ -1417,8 +1445,10 @@ async function uploadCloudEnvelope(envelope, code) {
   return manifest;
 }
 
-async function downloadCloudEnvelope(code) {
-  const manifest = await requestCloudSync('GET', code);
+async function downloadCloudEnvelope(code, options = {}) {
+  const { previous = false } = options;
+  const requestParams = previous ? { history: '1' } : {};
+  const manifest = await requestCloudSync('GET', code, null, requestParams);
   if (!manifest) return null;
 
   if (typeof manifest.ciphertext === 'string') {
@@ -1437,7 +1467,10 @@ async function downloadCloudEnvelope(code) {
 
   const chunks = new Array(chunkCount);
   for (let index = 0; index < chunkCount; index += 1) {
-    const part = await requestCloudSync('GET', code, null, { part: String(index) });
+    const part = await requestCloudSync('GET', code, null, {
+      ...requestParams,
+      part: String(index),
+    });
     if (!part || part.uploadId !== manifest.uploadId || typeof part.chunk !== 'string') {
       throw new Error(`Облачная база повреждена: не найдена часть ${index + 1}`);
     }
@@ -1458,13 +1491,60 @@ async function downloadCloudEnvelope(code) {
   };
 }
 
-async function localDataFingerprint(payload = createBackupPayload()) {
-  return sha256Hex(JSON.stringify(payload.data));
+function databaseStats(data) {
+  const clients = Array.isArray(data?.clients) ? data.clients.length : 0;
+  const works = Array.isArray(data?.clients) ? countClientWorks(data.clients) : 0;
+  return { clients, works };
 }
+
+function databaseStatsText(stats) {
+  return `${stats.clients} клиентов, ${stats.works} работ`;
+}
+
+function databaseIsEmpty(stats) {
+  return stats.clients === 0 && stats.works === 0;
+}
+
+function databaseIsSmaller(source, target) {
+  return source.clients < target.clients || source.works < target.works;
+}
+
+function confirmReducedDatabase(direction, source, target) {
+  const answer = window.prompt(
+    `${direction} уменьшит количество данных.\n\n` +
+      `Источник: ${databaseStatsText(source)}.\n` +
+      `Сейчас: ${databaseStatsText(target)}.\n\n` +
+      'Для подтверждения введите слово ЗАМЕНИТЬ.',
+    '',
+  );
+  return toText(answer).trim().toUpperCase() === 'ЗАМЕНИТЬ';
+}
+
+function normalizedBackupData(parsed) {
+  return {
+    clients: parsed.clients,
+    favorites: parsed.favorites,
+    recent: parsed.recent,
+    businessProfile: parsed.businessProfile,
+  };
+}
+
+async function localDataFingerprint(payload = createBackupPayload()) {
+  const parsed = payload?.data ? parseBackupPayload(payload) : payload;
+  return sha256Hex(JSON.stringify(normalizedBackupData(parsed)));
+}
+
+async function rememberCloudSyncPoint(payload, fingerprint = '') {
+  const parsed = payload?.data ? parseBackupPayload(payload) : payload;
+  const resolvedFingerprint = fingerprint || (await localDataFingerprint(parsed));
+  const updatedAt = parsed.dataUpdatedAt || parsed.exportedAt || ensureDataUpdatedAt();
+  setCloudSyncPoint(updatedAt, resolvedFingerprint);
+}
+
 
 function setCloudSyncBusy(busy) {
   cloudSyncInProgress = busy;
-  ['cloudUploadBtn', 'cloudDownloadBtn', 'saveCloudSyncCodeBtn', 'generateCloudSyncCodeBtn'].forEach(
+  ['cloudUploadBtn', 'cloudDownloadBtn', 'cloudRestorePreviousBtn', 'saveCloudSyncCodeBtn', 'generateCloudSyncCodeBtn'].forEach(
     (id) => {
       const element = document.getElementById(id);
       if (element) element.disabled = busy;
@@ -1558,22 +1638,47 @@ async function uploadCloudDatabase(options = {}) {
   }
 
   const localPayload = createBackupPayload();
+  const localParsed = parseBackupPayload(localPayload);
+  const localStats = databaseStats(localParsed);
+  const localFingerprint = await localDataFingerprint(localParsed);
+
+  if (databaseIsEmpty(localStats)) {
+    if (manual) {
+      window.alert(
+        'Пустая база не отправляется в облако. Это защищает клиентов и работы от случайного удаления.',
+      );
+    }
+    setCloudSyncStatus('Пустая база не может заменить облачную', 'warn');
+    return false;
+  }
 
   if (!skipRemoteCheck) {
     const remoteEnvelope = await downloadCloudEnvelope(code);
     if (remoteEnvelope) {
       const remotePayload = await decryptCloudPayload(remoteEnvelope, code);
       const remoteParsed = parseBackupPayload(remotePayload);
-      const localFingerprint = await localDataFingerprint(localPayload);
-      const remoteFingerprint = await localDataFingerprint(remotePayload);
-      const remoteIsNewer =
-        parseTimestamp(remoteParsed.dataUpdatedAt || remoteParsed.exportedAt) >
-        parseTimestamp(localPayload.dataUpdatedAt);
+      const remoteStats = databaseStats(remoteParsed);
+      const remoteFingerprint = await localDataFingerprint(remoteParsed);
 
-      if (manual && remoteIsNewer && localFingerprint !== remoteFingerprint) {
+      if (localFingerprint === remoteFingerprint) {
+        await rememberCloudSyncPoint(localParsed, localFingerprint);
+        setCloudSyncStatus('Все устройства используют одну базу', 'ok');
+        return true;
+      }
+
+      if (databaseIsSmaller(localStats, remoteStats)) {
+        if (!manual || !confirmReducedDatabase('Отправка в облако', localStats, remoteStats)) {
+          setCloudSyncStatus('Отправка остановлена: на устройстве меньше данных', 'warn');
+          return false;
+        }
+      } else if (
+        manual &&
+        parseTimestamp(remoteParsed.dataUpdatedAt || remoteParsed.exportedAt) >
+          parseTimestamp(localPayload.dataUpdatedAt)
+      ) {
         const approved = window.confirm(
           'В облаке есть более новые данные с другого устройства.\n\n' +
-            'Нажмите OK, чтобы всё равно заменить облачную базу данными с этого устройства.',
+            'Нажмите OK, чтобы заменить их данными с этого устройства.',
         );
         if (!approved) return false;
       }
@@ -1582,14 +1687,14 @@ async function uploadCloudDatabase(options = {}) {
 
   const envelope = await encryptCloudPayload(localPayload, code);
   await uploadCloudEnvelope(envelope, code);
-  setCloudLastSyncedAt(localPayload.dataUpdatedAt);
+  await rememberCloudSyncPoint(localParsed, localFingerprint);
   setCloudSyncStatus('База отправлена в облако', 'ok');
   renderCloudSyncInfo();
   return true;
 }
 
 async function downloadCloudDatabase(options = {}) {
-  const { manual = false, skipConfirm = false } = options;
+  const { manual = false, skipConfirm = false, previous = false } = options;
   const code = getCloudSyncCode();
   if (!code) {
     if (manual) window.alert('Сначала сохраните код синхронизации.');
@@ -1600,23 +1705,46 @@ async function downloadCloudDatabase(options = {}) {
     return false;
   }
 
-  const envelope = await downloadCloudEnvelope(code);
+  const envelope = await downloadCloudEnvelope(code, { previous });
   if (!envelope) {
-    if (manual) window.alert('В облаке пока нет базы. Сначала отправьте её с основного устройства.');
-    setCloudSyncStatus('Облачная база пока пуста', 'warn');
+    if (manual) {
+      window.alert(
+        previous
+          ? 'Предыдущая облачная копия ещё не создана.'
+          : 'В облаке пока нет базы. Сначала отправьте её с основного устройства.',
+      );
+    }
+    setCloudSyncStatus(previous ? 'Предыдущей облачной копии нет' : 'Облачная база пока пуста', 'warn');
     return false;
   }
 
   const remotePayload = await decryptCloudPayload(envelope, code);
   const imported = parseBackupPayload(remotePayload);
-  const remoteWorks = countClientWorks(imported.clients);
+  const remoteStats = databaseStats(imported);
+  const localStats = databaseStats({ clients: state.clients });
+  const remoteFingerprint = await localDataFingerprint(imported);
 
-  if (manual && !skipConfirm) {
+  if (databaseIsEmpty(remoteStats) && !databaseIsEmpty(localStats)) {
+    if (manual) {
+      window.alert(
+        'Облачная база пуста. Загрузка остановлена, чтобы не удалить клиентов и работы на этом устройстве.',
+      );
+    }
+    setCloudSyncStatus('Пустая облачная база заблокирована', 'warn');
+    return false;
+  }
+
+  if (databaseIsSmaller(remoteStats, localStats)) {
+    if (!manual || !confirmReducedDatabase('Загрузка из облака', remoteStats, localStats)) {
+      setCloudSyncStatus('Загрузка остановлена: в облаке меньше данных', 'warn');
+      return false;
+    }
+  } else if (manual && !skipConfirm) {
     const approved = window.confirm(
-      `Загрузить облачную базу?\n\n` +
-        `В облаке: ${imported.clients.length} клиентов, ${remoteWorks} работ.\n` +
-        `На устройстве: ${state.clients.length} клиентов, ${countClientWorks(state.clients)} работ.\n\n` +
-        'Перед заменой GORN сохранит точку отмены.',
+      `${previous ? 'Восстановить предыдущую облачную копию?' : 'Загрузить облачную базу?'}\n\n` +
+        `В облаке: ${databaseStatsText(remoteStats)}.\n` +
+        `На устройстве: ${databaseStatsText(localStats)}.\n\n` +
+        'Перед заменой ГОРН сохранит точку отмены.',
     );
     if (!approved) return false;
   }
@@ -1627,8 +1755,15 @@ async function downloadCloudDatabase(options = {}) {
     dataUpdatedAt: remoteUpdatedAt,
     sync: false,
   });
-  setCloudLastSyncedAt(remoteUpdatedAt);
-  setCloudSyncStatus('Облачная база загружена на устройство', 'ok');
+  await rememberCloudSyncPoint(imported, remoteFingerprint);
+
+  if (previous) {
+    await uploadCloudDatabase({ manual: false, skipRemoteCheck: true });
+    setCloudSyncStatus('Предыдущая облачная копия восстановлена', 'ok');
+  } else {
+    setCloudSyncStatus('Облачная база загружена на устройство', 'ok');
+  }
+
   refreshCurrentViewAfterSync();
   renderCloudSyncInfo();
   return true;
@@ -1647,64 +1782,115 @@ async function synchronizeCloudDatabase(options = {}) {
   }
 
   setCloudSyncBusy(true);
-  setCloudSyncStatus('Синхронизация…');
+  setCloudSyncStatus('Безопасная синхронизация…');
 
   try {
     const localPayload = createBackupPayload();
+    const localParsed = parseBackupPayload(localPayload);
+    const localStats = databaseStats(localParsed);
+    const localFingerprint = await localDataFingerprint(localParsed);
     const remoteEnvelope = await downloadCloudEnvelope(code);
 
     if (!remoteEnvelope) {
-      await uploadCloudDatabase({ manual: false, skipRemoteCheck: true });
+      if (databaseIsEmpty(localStats)) {
+        setCloudSyncStatus('Нет данных для первой отправки в облако', 'warn');
+      } else if (manual) {
+        const approved = window.confirm(
+          `В облаке пока нет базы. Отправить данные этого устройства?\n\n${databaseStatsText(localStats)}.`,
+        );
+        if (approved) await uploadCloudDatabase({ manual: false, skipRemoteCheck: true });
+      } else {
+        setCloudSyncStatus('Облако пусто — нажмите «Отправить в облако»', 'warn');
+      }
       return;
     }
 
     const remotePayload = await decryptCloudPayload(remoteEnvelope, code);
     const remoteParsed = parseBackupPayload(remotePayload);
-    const localFingerprint = await localDataFingerprint(localPayload);
-    const remoteFingerprint = await localDataFingerprint(remotePayload);
-    const localUpdatedAt = localPayload.dataUpdatedAt;
-    const remoteUpdatedAt = remoteParsed.dataUpdatedAt || remoteParsed.exportedAt;
-    const lastSyncedAt = getCloudLastSyncedAt();
+    const remoteStats = databaseStats(remoteParsed);
+    const remoteFingerprint = await localDataFingerprint(remoteParsed);
+    const lastFingerprint = getCloudLastFingerprint();
 
     if (localFingerprint === remoteFingerprint) {
-      const newest = parseTimestamp(remoteUpdatedAt) > parseTimestamp(localUpdatedAt)
-        ? remoteUpdatedAt
-        : localUpdatedAt;
-      if (newest) {
-        localStorage.setItem(CLOUD_SYNC_UPDATED_KEY, newest);
-        setCloudLastSyncedAt(newest);
-      }
+      await rememberCloudSyncPoint(remoteParsed, remoteFingerprint);
       setCloudSyncStatus('Все устройства используют одну базу', 'ok');
       return;
     }
 
-    const localChanged = parseTimestamp(localUpdatedAt) > parseTimestamp(lastSyncedAt);
-    const remoteChanged = parseTimestamp(remoteUpdatedAt) > parseTimestamp(lastSyncedAt);
+    if (!lastFingerprint) {
+      if (databaseIsEmpty(localStats) && !databaseIsEmpty(remoteStats)) {
+        await downloadCloudDatabase({ manual: false, skipConfirm: true });
+        return;
+      }
 
-    if (localChanged && remoteChanged && lastSyncedAt) {
-      setCloudSyncStatus('На двух устройствах есть разные изменения', 'warn');
-      if (manual) {
-        const useRemote = window.confirm(
-          'Обнаружены разные изменения на этом и другом устройстве.\n\n' +
-            'OK — загрузить облачную базу на это устройство.\n' +
-            'Отмена — оставить данные этого устройства и отправить их в облако.',
-        );
-        if (useRemote) {
-          await downloadCloudDatabase({ manual: false, skipConfirm: true });
+      if (!databaseIsEmpty(localStats) && databaseIsEmpty(remoteStats)) {
+        if (manual) {
+          const approved = window.confirm(
+            `Облачная база пуста. Отправить восстановленные данные этого устройства?\n\n${databaseStatsText(localStats)}.`,
+          );
+          if (approved) await uploadCloudDatabase({ manual: false, skipRemoteCheck: true });
         } else {
-          await uploadCloudDatabase({ manual: false, skipRemoteCheck: true });
+          setCloudSyncStatus('Облако пусто — данные устройства сохранены', 'warn');
         }
+        return;
+      }
+
+      setCloudSyncStatus('Нужно выбрать основную базу вручную', 'warn');
+      if (manual) {
+        const choice = toText(
+          window.prompt(
+            `На устройстве и в облаке разные базы.\n\n` +
+              `Устройство: ${databaseStatsText(localStats)}.\n` +
+              `Облако: ${databaseStatsText(remoteStats)}.\n\n` +
+              'Введите УСТРОЙСТВО, чтобы отправить текущую базу, или ОБЛАКО, чтобы загрузить облачную.',
+            '',
+          ),
+        ).trim().toUpperCase();
+        if (choice === 'УСТРОЙСТВО') await uploadCloudDatabase({ manual: true });
+        if (choice === 'ОБЛАКО') await downloadCloudDatabase({ manual: true });
       }
       return;
     }
 
-    if (parseTimestamp(remoteUpdatedAt) > parseTimestamp(localUpdatedAt)) {
-      await downloadCloudDatabase({ manual: false, skipConfirm: true });
-    } else {
-      await uploadCloudDatabase({ manual: false, skipRemoteCheck: true });
+    const localChanged = localFingerprint !== lastFingerprint;
+    const remoteChanged = remoteFingerprint !== lastFingerprint;
+
+    if (localChanged && !remoteChanged) {
+      if (databaseIsSmaller(localStats, remoteStats)) {
+        setCloudSyncStatus('Удаления не отправлены автоматически — подтвердите вручную', 'warn');
+        if (manual) await uploadCloudDatabase({ manual: true });
+      } else {
+        await uploadCloudDatabase({ manual: false, skipRemoteCheck: true });
+      }
+      return;
+    }
+
+    if (!localChanged && remoteChanged) {
+      if (databaseIsSmaller(remoteStats, localStats)) {
+        setCloudSyncStatus('Облачная база меньше — автозагрузка остановлена', 'warn');
+        if (manual) await downloadCloudDatabase({ manual: true });
+      } else {
+        await downloadCloudDatabase({ manual: false, skipConfirm: true });
+      }
+      return;
+    }
+
+    setCloudSyncStatus('На двух устройствах есть разные изменения', 'warn');
+    if (manual) {
+      const choice = toText(
+        window.prompt(
+          `Конфликт синхронизации.\n\n` +
+            `Устройство: ${databaseStatsText(localStats)}.\n` +
+            `Облако: ${databaseStatsText(remoteStats)}.\n\n` +
+            'Введите УСТРОЙСТВО или ОБЛАКО. Отмена ничего не изменит.',
+          '',
+        ),
+      ).trim().toUpperCase();
+      if (choice === 'УСТРОЙСТВО') await uploadCloudDatabase({ manual: true });
+      if (choice === 'ОБЛАКО') await downloadCloudDatabase({ manual: true });
     }
   } catch (error) {
-    console.error('GORN: ошибка облачной синхронизации', error);
+    console.error('ГОРН: ошибка облачной синхронизации', error);
     setCloudSyncStatus(error.message || 'Не удалось синхронизировать базу', 'error');
     if (manual) window.alert(error.message || 'Не удалось синхронизировать базу.');
   } finally {
@@ -1738,7 +1924,7 @@ function saveCloudSyncCode() {
 
   try {
     localStorage.setItem(CLOUD_SYNC_CODE_KEY, code);
-    localStorage.removeItem(CLOUD_SYNC_LAST_SYNC_KEY);
+    clearCloudSyncPoint();
   } catch (error) {
     window.alert('Не удалось сохранить код на этом устройстве.');
     return;
@@ -1758,7 +1944,7 @@ function disconnectCloudSync() {
   }
 
   localStorage.removeItem(CLOUD_SYNC_CODE_KEY);
-  localStorage.removeItem(CLOUD_SYNC_LAST_SYNC_KEY);
+  clearCloudSyncPoint();
   cloudSyncStatusOverride = '';
   const input = $('#cloudSyncCodeInput');
   if (input) input.value = '';

@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="ГОРН">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="manifest.webmanifest?v=1.4.0">
+    <link rel="manifest" href="manifest.webmanifest?v=1.4.1">
     <link rel="icon" href="icon-192.png" type="image/png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <link rel="stylesheet" href="style.css?v=1.4.0">
+    <link rel="stylesheet" href="style.css?v=1.4.1">
     <title>ГОРН MASTER SYSTEM</title>
   </head>
   <body>
@@ -21,7 +21,7 @@
         <div>
           <h1>ГОРН</h1>
           <p>Профессиональный помощник печника</p>
-          <div id="versionLine" class="version-line">v1.4.0 • Stable • 18.07.2026</div>
+          <div id="versionLine" class="version-line">v1.4.1 • Stable • 18.07.2026</div>
         </div>
       </div>
       <input id="search" type="search" placeholder="Поиск: дымит, кирпич, чистка...">
@@ -590,8 +590,8 @@
           <img src="icon-192.png" alt="ГОРН">
           <h2>ГОРН MASTER SYSTEM</h2>
           <p>Профессиональный помощник печника</p>
-          <div id="aboutVersion" class="about-version">Версия 1.4.0 Stable</div>
-          <p id="aboutUpdated">Обновлено: 16.07.2026</p>
+          <div id="aboutVersion" class="about-version">Версия 1.4.1 Stable</div>
+          <p id="aboutUpdated">Обновлено: 18.07.2026</p>
           <h3>Первая стабильная версия</h3>
           <ul>
             <li>Единая зашифрованная база на Mac, iPhone и iPad</li>
@@ -659,12 +659,16 @@
               <button id="cloudDownloadBtn" class="secondary-btn" type="button">↓ Загрузить из облака</button>
             </div>
 
+            <button id="cloudRestorePreviousBtn" class="secondary-btn cloud-sync-disconnect" type="button">
+              ↩ Восстановить предыдущую облачную копию
+            </button>
+
             <button id="disconnectCloudSyncBtn" class="secondary-btn cloud-sync-disconnect hidden" type="button">
               Отключить синхронизацию на этом устройстве
             </button>
 
             <p class="cloud-sync-note">
-              Код не отправляется в открытом виде. База шифруется на устройстве и синхронизируется автоматически после изменений.
+              Код не отправляется в открытом виде. Пустая или уменьшенная база не заменит рабочую автоматически. Перед каждым облачным обновлением сохраняется предыдущая версия.
             </p>
           </section>
 
@@ -696,6 +700,6 @@
 
     <div id="toast" class="toast">Скопировано</div>
     <script src="vendor/jspdf.umd.min.js?v=4.2.1"></script>
-    <script src="app.js?v=1.4.0"></script>
+    <script src="app.js?v=1.4.1"></script>
   </body>
 </html>

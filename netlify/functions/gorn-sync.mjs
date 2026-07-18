@@ -83,6 +83,7 @@ export default async (request) => {
   const key = (url.searchParams.get('key') || '').toLowerCase();
   const part = parsePart(url);
   const isManifestWrite = url.searchParams.get('manifest') === '1';
+  const useHistory = url.searchParams.get('history') === '1';
 
   if (!KEY_PATTERN.test(key)) {
     return jsonResponse({ error: 'Неверный ключ синхронизации' }, 400);
@@ -98,8 +99,9 @@ export default async (request) => {
 
   try {
     if (request.method === 'GET') {
+      const manifestKey = useHistory ? `${key}/history/latest` : key;
       if (part !== null) {
-        const manifest = await store.get(key, { type: 'json' });
+        const manifest = await store.get(manifestKey, { type: 'json' });
         if (!manifest) {
           return jsonResponse({ error: 'Облачная база не найдена' }, 404);
         }
@@ -116,7 +118,7 @@ export default async (request) => {
         return jsonResponse(entry);
       }
 
-      const entry = await store.get(key, { type: 'json' });
+      const entry = await store.get(manifestKey, { type: 'json' });
       if (entry === null) {
         return jsonResponse({ error: 'Облачная база не найдена' }, 404);
       }
@@ -144,6 +146,18 @@ export default async (request) => {
 
       validateManifest(payload);
       const previous = await store.get(key, { type: 'json' });
+      const olderHistory = await store.get(`${key}/history/latest`, { type: 'json' });
+
+      if (previous) {
+        await store.setJSON(`${key}/history/latest`, previous, {
+          metadata: {
+            appVersion: String(previous.appVersion || ''),
+            updatedAt: String(previous.updatedAt || ''),
+            chunkCount: Number(previous.chunkCount) || 0,
+          },
+        });
+      }
+
       await store.setJSON(key, payload, {
         metadata: {
           appVersion: String(payload.appVersion || ''),
@@ -152,17 +166,19 @@ export default async (request) => {
         },
       });
 
+      const obsoleteUploadId = String(olderHistory?.uploadId || '');
+      const obsoleteChunkCount = Number(olderHistory?.chunkCount) || 0;
       const previousUploadId = String(previous?.uploadId || '');
-      const previousChunkCount = Number(previous?.chunkCount) || 0;
       if (
-        previousUploadId &&
-        previousUploadId !== payload.uploadId &&
-        UPLOAD_ID_PATTERN.test(previousUploadId)
+        obsoleteUploadId &&
+        obsoleteUploadId !== previousUploadId &&
+        obsoleteUploadId !== payload.uploadId &&
+        UPLOAD_ID_PATTERN.test(obsoleteUploadId)
       ) {
         await Promise.all(
           Array.from(
-            { length: Math.min(previousChunkCount, MAX_PARTS) },
-            (_, index) => store.delete(`${key}/chunks/${previousUploadId}/${index}`),
+            { length: Math.min(obsoleteChunkCount, MAX_PARTS) },
+            (_, index) => store.delete(`${key}/chunks/${obsoleteUploadId}/${index}`),
           ),
         );
       }
