@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="ГОРН">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="manifest.webmanifest?v=1.5.0">
+    <link rel="manifest" href="manifest.webmanifest?v=1.6.0">
     <link rel="icon" href="icon-192.png" type="image/png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <link rel="stylesheet" href="style.css?v=1.5.0">
+    <link rel="stylesheet" href="style.css?v=1.6.0">
     <title>ГОРН MASTER SYSTEM</title>
   </head>
   <body>
@@ -21,7 +21,7 @@
         <div>
           <h1>ГОРН</h1>
           <p>Профессиональный помощник печника</p>
-          <div id="versionLine" class="version-line">v1.5.0 • Stable • 18.07.2026</div>
+          <div id="versionLine" class="version-line">v1.6.0 • Stable • 18.07.2026</div>
         </div>
       </div>
       <input id="search" type="search" placeholder="Поиск: дымит, кирпич, чистка...">
@@ -72,6 +72,7 @@
           <div class="dashboard-actions" aria-label="Быстрые действия">
             <button id="dashboardNewClientBtn" class="dashboard-action primary" type="button">+ Новый клиент</button>
             <button id="dashboardPlanBtn" class="dashboard-action" type="button">🗓 Открыть план</button>
+            <button id="dashboardWorksBtn" class="dashboard-action" type="button">🧱 Все работы</button>
             <button id="dashboardClientsBtn" class="dashboard-action" type="button">👤 Все клиенты</button>
             <button id="dashboardBackupBtn" class="dashboard-action" type="button">⬇ Резервная копия</button>
           </div>
@@ -164,6 +165,65 @@
           <div id="planUpcomingList" class="plan-list"></div>
           <div id="planUpcomingEmpty" class="plan-empty">Ближайших работ пока нет</div>
         </section>
+      </section>
+
+
+      <section id="worksView" class="hidden">
+        <div class="works-header">
+          <div>
+            <div class="section-title works-section-title">РАБОТЫ <span id="allWorksCountBadge" class="count-badge"></span></div>
+            <div class="clients-storage-note">Все работы по всем клиентам в одном списке</div>
+          </div>
+          <button id="allWorksPlanBtn" class="secondary-btn compact-btn" type="button">🗓 Открыть план</button>
+        </div>
+
+        <div class="all-works-summary-grid">
+          <article class="all-works-summary-card">
+            <span>Всего</span>
+            <strong id="allWorksTotal">0</strong>
+            <small>работ</small>
+          </article>
+          <article class="all-works-summary-card active">
+            <span>Активные</span>
+            <strong id="allWorksActive">0</strong>
+            <small>план и в работе</small>
+          </article>
+          <article class="all-works-summary-card completed">
+            <span>Завершено</span>
+            <strong id="allWorksCompleted">0</strong>
+            <small>работ</small>
+          </article>
+          <article class="all-works-summary-card money">
+            <span>Общая сумма</span>
+            <strong id="allWorksAmount">0 ₽</strong>
+            <small>без отменённых</small>
+          </article>
+        </div>
+
+        <div id="allWorksTools" class="filter-toolbar all-works-toolbar">
+          <div class="filter-block">
+            <span class="filter-label">Статус работы</span>
+            <div class="filter-chips">
+              <button class="filter-chip active" data-all-work-filter="Все" type="button">Все</button>
+              <button class="filter-chip" data-all-work-filter="Планируется" type="button">Планируются</button>
+              <button class="filter-chip" data-all-work-filter="В работе" type="button">В работе</button>
+              <button class="filter-chip" data-all-work-filter="Завершено" type="button">Завершены</button>
+              <button class="filter-chip" data-all-work-filter="Отменено" type="button">Отменены</button>
+            </div>
+          </div>
+          <label class="sort-control">
+            <span>Сортировка</span>
+            <select id="allWorkSort">
+              <option value="updated">Последние изменения</option>
+              <option value="dateAsc">Ближайшие по дате</option>
+              <option value="dateDesc">Сначала поздние</option>
+              <option value="clientAsc">По имени клиента</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="allWorksList" class="all-works-list"></div>
+        <div id="allWorksEmpty" class="empty">Работ пока нет</div>
       </section>
 
       <section id="clientsView" class="hidden">
@@ -618,7 +678,7 @@
           <img src="icon-192.png" alt="ГОРН">
           <h2>ГОРН MASTER SYSTEM</h2>
           <p>Профессиональный помощник печника</p>
-          <div id="aboutVersion" class="about-version">Версия 1.5.0 Stable</div>
+          <div id="aboutVersion" class="about-version">Версия 1.6.0 Stable</div>
           <p id="aboutUpdated">Обновлено: 18.07.2026</p>
           <h3>Первая стабильная версия</h3>
           <ul>
@@ -722,12 +782,13 @@
       <button data-nav="home" class="active" type="button">⌂<span>Главная</span></button>
       <button data-nav="favorites" type="button">★<span>Избранное</span></button>
       <button data-nav="plan" type="button">🗓<span>План</span></button>
+      <button data-nav="works" type="button">🧱<span>Работы</span></button>
       <button data-nav="clients" type="button">👤<span>Клиенты</span></button>
       <button data-nav="about" type="button">ⓘ<span>О системе</span></button>
     </nav>
 
     <div id="toast" class="toast">Скопировано</div>
     <script src="vendor/jspdf.umd.min.js?v=4.2.1"></script>
-    <script src="app.js?v=1.5.0"></script>
+    <script src="app.js?v=1.6.0"></script>
   </body>
 </html>

@@ -1,5 +1,5 @@
 const APP_META = {
-  version: '1.5.0',
+  version: '1.6.0',
   status: 'Stable',
   updated: '18.07.2026',
 };
@@ -201,6 +201,8 @@ const stateDefaults = {
   clientSort: 'updated',
   workStatusFilter: 'Все',
   workSort: 'dateDesc',
+  allWorksStatusFilter: 'Все',
+  allWorksSort: 'updated',
 };
 
 const ARRAY_FIELDS = [
@@ -222,10 +224,13 @@ const state = {
   cardSearch: '',
   clientSearch: '',
   planSearch: '',
+  workSearch: '',
   clientStatusFilter: stateDefaults.clientStatusFilter,
   clientSort: stateDefaults.clientSort,
   workStatusFilter: stateDefaults.workStatusFilter,
   workSort: stateDefaults.workSort,
+  allWorksStatusFilter: stateDefaults.allWorksStatusFilter,
+  allWorksSort: stateDefaults.allWorksSort,
   editingClientId: null,
   editingWorkId: null,
   workChecklistDraft: null,
@@ -822,6 +827,12 @@ function bindEvents() {
       return;
     }
 
+    if (state.mode === 'works') {
+      state.workSearch = search?.value || '';
+      renderAllWorks();
+      return;
+    }
+
     if (state.mode === 'home' || state.mode === 'favorites') {
       state.cardSearch = search?.value || '';
       renderHome();
@@ -851,7 +862,9 @@ function bindEvents() {
     openClientForm();
   });
   $('#dashboardPlanBtn')?.addEventListener('click', () => navigate('plan'));
+  $('#dashboardWorksBtn')?.addEventListener('click', () => navigate('works'));
   $('#dashboardClientsBtn')?.addEventListener('click', () => navigate('clients'));
+  $('#allWorksPlanBtn')?.addEventListener('click', () => navigate('plan'));
   $('#exportPlanCalendarBtn')?.addEventListener('click', exportPlanCalendar);
   $('#dashboardBackupBtn')?.addEventListener('click', exportBackup);
   $('#dashboardAttentionPlanBtn')?.addEventListener('click', () => navigate('plan'));
@@ -888,6 +901,17 @@ function bindEvents() {
   $('#workSort')?.addEventListener('change', (event) => {
     state.workSort = event.target.value || stateDefaults.workSort;
     renderWorkHistory();
+  });
+
+  document.querySelectorAll('[data-all-work-filter]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.allWorksStatusFilter = button.dataset.allWorkFilter || 'Все';
+      renderAllWorks();
+    });
+  });
+  $('#allWorkSort')?.addEventListener('change', (event) => {
+    state.allWorksSort = event.target.value || stateDefaults.allWorksSort;
+    renderAllWorks();
   });
 
   $('#closeClientFormBtn')?.addEventListener('click', closeClientForm);
@@ -1159,6 +1183,11 @@ function navigate(where, pushHistory = true) {
     return;
   }
 
+  if (where === 'works') {
+    showWorksView(pushHistory);
+    return;
+  }
+
   const mode = where === 'favorites' ? 'favorites' : 'home';
   showListView(mode, pushHistory);
 }
@@ -1213,6 +1242,22 @@ function showPlanView(pushHistory = false) {
   }
 }
 
+function showWorksView(pushHistory = false) {
+  state.mode = 'works';
+  state.current = null;
+  state.editingClientId = null;
+  state.editingWorkId = null;
+  state.workEstimateDraft = null;
+  setActiveNav('works');
+  setSearchContext('works');
+  showOnly('worksView');
+  renderAllWorks();
+
+  if (pushHistory) {
+    history.pushState({ view: 'works' }, '', window.location.href);
+  }
+}
+
 function setSearchContext(context) {
   const search = $('#search');
   if (!search) return;
@@ -1226,6 +1271,12 @@ function setSearchContext(context) {
   if (context === 'plan') {
     search.value = state.planSearch;
     search.placeholder = 'Поиск в плане: клиент, адрес, работа...';
+    return;
+  }
+
+  if (context === 'works') {
+    search.value = state.workSearch;
+    search.placeholder = 'Поиск работ: клиент, адрес, название...';
     return;
   }
 
@@ -1262,11 +1313,16 @@ function restoreHistoryView(historyState) {
     return;
   }
 
+  if (view === 'works') {
+    showWorksView(false);
+    return;
+  }
+
   showListView(view === 'favorites' ? 'favorites' : 'home', false);
 }
 
 function showOnly(id) {
-  ['homeView', 'cardView', 'planView', 'clientsView', 'aboutView'].forEach((viewId) => {
+  ['homeView', 'cardView', 'planView', 'worksView', 'clientsView', 'aboutView'].forEach((viewId) => {
     $(`#${viewId}`).classList.toggle('hidden', viewId !== id);
   });
   window.scrollTo({ top: 0, behavior: 'auto' });
@@ -2173,8 +2229,12 @@ function applyImportedData(data, options = {}) {
   state.recent = data.recent.filter((id) => state.cards.some((card) => card.id === id));
   state.businessProfile = normalizeBusinessProfile(data.businessProfile);
   state.clientSearch = '';
+  state.planSearch = '';
+  state.workSearch = '';
   state.clientStatusFilter = stateDefaults.clientStatusFilter;
   state.clientSort = stateDefaults.clientSort;
+  state.allWorksStatusFilter = stateDefaults.allWorksStatusFilter;
+  state.allWorksSort = stateDefaults.allWorksSort;
   state.editingClientId = null;
   state.editingWorkId = null;
   state.workChecklistDraft = null;
@@ -2657,6 +2717,166 @@ function collectPlanEntries() {
       work,
     })),
   );
+}
+
+
+function renderAllWorks() {
+  const allEntries = collectPlanEntries();
+  const query = normalizeSearchText(state.workSearch);
+  const tokens = query.split(' ').filter(Boolean);
+  let entries = allEntries.filter((entry) => {
+    const statusMatches =
+      state.allWorksStatusFilter === 'Все' || entry.work.status === state.allWorksStatusFilter;
+    if (!statusMatches) return false;
+    if (!tokens.length) return true;
+
+    const text = [
+      entry.clientName,
+      entry.clientPhone,
+      entry.clientAddress,
+      entry.clientStatus,
+      entry.work.title,
+      entry.work.date,
+      workEndDate(entry.work),
+      entry.work.startTime,
+      entry.work.address,
+      entry.work.status,
+      entry.work.amount,
+      entry.work.notes,
+    ].join(' ');
+    return fieldContainsTokens(text, tokens);
+  });
+
+  const sorters = {
+    updated: (a, b) =>
+      String(b.work.updatedAt).localeCompare(String(a.work.updatedAt)) ||
+      String(b.work.date).localeCompare(String(a.work.date)),
+    dateAsc: (a, b) =>
+      String(a.work.date).localeCompare(String(b.work.date)) ||
+      String(a.work.startTime || '99:99').localeCompare(String(b.work.startTime || '99:99')) ||
+      String(b.work.updatedAt).localeCompare(String(a.work.updatedAt)),
+    dateDesc: (a, b) =>
+      String(b.work.date).localeCompare(String(a.work.date)) ||
+      String(b.work.updatedAt).localeCompare(String(a.work.updatedAt)),
+    clientAsc: (a, b) =>
+      String(a.clientName).localeCompare(String(b.clientName), 'ru') ||
+      String(b.work.date).localeCompare(String(a.work.date)),
+  };
+  entries.sort(sorters[state.allWorksSort] || sorters.updated);
+
+  const activeEntries = allEntries.filter((entry) => isActivePlanWork(entry.work));
+  const completedEntries = allEntries.filter((entry) => entry.work.status === 'Завершено');
+  const totalAmount = allEntries
+    .filter((entry) => entry.work.status !== 'Отменено')
+    .reduce((total, entry) => total + parseAmountNumber(entry.work.amount), 0);
+  const isFiltered = Boolean(query) || state.allWorksStatusFilter !== 'Все';
+
+  $('#allWorksCountBadge').textContent = isFiltered
+    ? `(${entries.length} из ${allEntries.length})`
+    : `(${allEntries.length})`;
+  $('#allWorksTotal').textContent = String(allEntries.length);
+  $('#allWorksActive').textContent = String(activeEntries.length);
+  $('#allWorksCompleted').textContent = String(completedEntries.length);
+  $('#allWorksAmount').textContent = formatRubles(totalAmount);
+  $('#allWorksList').innerHTML = entries.map(allWorkCard).join('');
+  $('#allWorksEmpty').textContent = isFiltered ? 'По вашему запросу ничего не найдено' : 'Работ пока нет';
+  $('#allWorksEmpty').classList.toggle('hidden', entries.length > 0);
+
+  document.querySelectorAll('[data-all-work-filter]').forEach((button) => {
+    button.classList.toggle(
+      'active',
+      button.dataset.allWorkFilter === state.allWorksStatusFilter,
+    );
+  });
+  const sort = $('#allWorkSort');
+  if (sort && sort.value !== state.allWorksSort) sort.value = state.allWorksSort;
+
+  document.querySelectorAll('[data-all-work-open-client-id]').forEach((button) => {
+    button.onclick = (event) => {
+      event.stopPropagation();
+      openWorkFromAllWorks(
+        button.dataset.allWorkOpenClientId,
+        button.dataset.allWorkOpenWorkId,
+      );
+    };
+  });
+  document.querySelectorAll('[data-all-work-calendar-client-id]').forEach((button) => {
+    button.onclick = (event) => {
+      event.stopPropagation();
+      exportSavedWorkCalendar(
+        button.dataset.allWorkCalendarClientId,
+        button.dataset.allWorkCalendarWorkId,
+      );
+    };
+  });
+  document.querySelectorAll('.all-work-call').forEach((link) => {
+    link.onclick = (event) => event.stopPropagation();
+  });
+  document.querySelectorAll('[data-all-work-card-client-id]').forEach((card) => {
+    card.onclick = () => openWorkFromAllWorks(
+      card.dataset.allWorkCardClientId,
+      card.dataset.allWorkCardWorkId,
+    );
+  });
+}
+
+function allWorkCard(entry) {
+  const { clientId, clientName, clientPhone, clientAddress, work } = entry;
+  const phoneHref = toText(clientPhone).replace(/[^\d+]/g, '');
+  const checklist = workChecklistProgress(work.checklist);
+  const estimate = calculateWorkEstimate(work.estimate);
+  const shownAmount = work.amount || (estimate.total ? formatRubles(estimate.total) : '');
+  const statusClass = {
+    'Планируется': 'planned',
+    'В работе': 'progress',
+    'Завершено': 'done',
+    'Отменено': 'cancelled',
+  }[work.status] || 'planned';
+  const address = work.address || clientAddress;
+  const details = [
+    work.date ? `🗓 ${esc(workPeriodText(work))}` : '',
+    currentWorkDayText(work) ? `🏗 ${esc(currentWorkDayText(work))}` : '',
+    work.startTime ? `🕒 ${esc(work.startTime)}` : '',
+    clientName ? `👤 ${esc(clientName)}` : '',
+    address ? `📍 ${esc(address)}` : '',
+    shownAmount ? `💰 ${esc(shownAmount)}` : '',
+    estimate.lineCount ? `🧾 ${estimate.lineCount}` : '',
+    checklist.total ? `☑ ${checklist.done}/${checklist.total}` : '',
+    checklist.photos ? `📷 ${checklist.photos}` : '',
+  ].filter(Boolean);
+
+  return `
+    <article class="all-work-card" data-all-work-card-client-id="${esc(clientId)}" data-all-work-card-work-id="${esc(work.id)}">
+      <div class="all-work-card-main">
+        <div class="all-work-heading">
+          <div class="all-work-title-wrap">
+            <div class="all-work-title">${esc(work.title)}</div>
+            <div class="all-work-client">${esc(clientName || 'Клиент не указан')}</div>
+          </div>
+          <span class="work-status ${esc(statusClass)}">${esc(work.status)}</span>
+        </div>
+        <div class="all-work-details">${details.join('<span>•</span>')}</div>
+        ${work.notes ? `<div class="all-work-notes">${esc(work.notes)}</div>` : ''}
+      </div>
+      <div class="all-work-actions">
+        ${phoneHref ? `<a class="client-call all-work-call" href="tel:${esc(phoneHref)}">Позвонить</a>` : ''}
+        <button class="calendar-action-btn" data-all-work-calendar-client-id="${esc(clientId)}" data-all-work-calendar-work-id="${esc(work.id)}" type="button">🗓 В календарь</button>
+        <button class="client-open-btn" data-all-work-open-client-id="${esc(clientId)}" data-all-work-open-work-id="${esc(work.id)}" type="button">Открыть работу</button>
+      </div>
+    </article>`;
+}
+
+function openWorkFromAllWorks(clientId, workId) {
+  const client = state.clients.find((item) => item.id === clientId);
+  const work = client?.works?.find((item) => item.id === workId);
+  if (!client || !work) {
+    showToast('Работа не найдена');
+    return;
+  }
+
+  showClientsView(true);
+  openClientForm(clientId);
+  openWorkForm(workId);
 }
 
 function isActivePlanWork(work) {
