@@ -1,13 +1,13 @@
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.6.1';
 const CACHE_NAME = `gorn-v${APP_VERSION}-stable`;
 const APP_SHELL = [
   './',
   './index.html',
-  './index.html?v=1.6.0',
-  './style.css?v=1.6.0',
-  './app.js?v=1.6.0',
-  './data/cards.json?v=1.6.0',
-  './manifest.webmanifest?v=1.6.0',
+  './index.html?v=1.6.1',
+  './style.css?v=1.6.1',
+  './app.js?v=1.6.1',
+  './data/cards.json?v=1.6.1',
+  './manifest.webmanifest?v=1.6.1',
   './apple-touch-icon.png',
   './icon-192.png',
   './icon-512.png',
@@ -17,7 +17,20 @@ const APP_SHELL = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.allSettled(
+        APP_SHELL.map(async (url) => {
+          try {
+            const response = await fetch(url, { cache: 'reload' });
+            if (response.ok) await cache.put(url, response.clone());
+          } catch (_) {
+            // One unavailable asset must not break the whole application update.
+          }
+        }),
+      ),
+    ),
+  );
 });
 
 self.addEventListener('message', (event) => {
@@ -85,7 +98,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.pathname.endsWith('/data/cards.json')) {
-    event.respondWith(networkFirst(request, './data/cards.json?v=1.6.0'));
+    event.respondWith(networkFirst(request, './data/cards.json?v=1.6.1'));
     return;
   }
 
