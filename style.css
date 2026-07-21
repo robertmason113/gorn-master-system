@@ -1563,3 +1563,10 @@ input[type="number"]{
     grid-template-columns:minmax(0,1fr) 44px 44px 64px 28px;
   }
 }
+
+
+/* v1.7.0 — статус автоматической синхронизации */
+.header-sync-status{margin-top:5px;color:#8CD3A2;font-size:11px;font-weight:750;line-height:1.3}
+.header-sync-status.warn{color:#F0CC70}
+.header-sync-status.error{color:#FFAAA0}
+.header-sync-status.hidden{display:none!important}

@@ -1,5 +1,5 @@
 const APP_META = {
-  version: '1.6.3',
+  version: '1.7.0',
   status: 'Stable',
   updated: '21.07.2026',
 };
@@ -192,9 +192,12 @@ const CLOUD_SYNC_UPDATED_KEY = 'gornDataUpdatedAt';
 const CLOUD_SYNC_LAST_SYNC_KEY = 'gornCloudLastSyncedAt';
 const CLOUD_SYNC_LAST_FINGERPRINT_KEY = 'gornCloudLastFingerprint';
 const CLOUD_SYNC_DEVICE_KEY = 'gornCloudDeviceId';
+const CLOUD_SYNC_PENDING_KEY = 'gornCloudSyncPending';
 const CLOUD_SYNC_MIN_CODE_LENGTH = 16;
 const CLOUD_SYNC_PBKDF2_ITERATIONS = 120000;
 const CLOUD_SYNC_CHUNK_CHARS = 700000;
+const CLOUD_SYNC_TIMEOUT_MS = 15000;
+const CLOUD_SYNC_HEARTBEAT_MS = 45000;
 
 const stateDefaults = {
   clientStatusFilter: 'Все',
@@ -244,6 +247,9 @@ const state = {
 let pendingServiceWorker = null;
 let systemBannerMode = '';
 let cloudSyncTimer = null;
+let cloudSyncRetryTimer = null;
+let cloudSyncHeartbeatTimer = null;
+let cloudSyncStatusTimer = null;
 let cloudSyncInProgress = false;
 let cloudSyncStatusOverride = '';
 
@@ -1060,14 +1066,14 @@ function bindEvents() {
 
   window.addEventListener('online', () => {
     updateConnectionBanner();
-    scheduleCloudSync(400);
+    scheduleCloudSync(150);
   });
   window.addEventListener('offline', () => {
     updateConnectionBanner();
     renderCloudSyncInfo();
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') scheduleCloudSync(500);
+    if (document.visibilityState === 'visible') scheduleCloudSync(200);
   });
   window.addEventListener('popstate', (event) => restoreHistoryView(event.state));
   updateConnectionBanner();
@@ -1339,11 +1345,12 @@ function save(options = {}) {
 
     if (markChanged) {
       localStorage.setItem(CLOUD_SYNC_UPDATED_KEY, new Date().toISOString());
+      setCloudSyncPending(true);
     } else {
       ensureDataUpdatedAt();
     }
 
-    if (sync) scheduleCloudSync();
+    if (sync) scheduleCloudSync(1200);
     return true;
   } catch (error) {
     console.warn('GORN: не удалось сохранить локальные данные', error);
@@ -1417,6 +1424,32 @@ function clearCloudSyncPoint() {
     localStorage.removeItem(CLOUD_SYNC_LAST_SYNC_KEY);
     localStorage.removeItem(CLOUD_SYNC_LAST_FINGERPRINT_KEY);
   } catch (error) {}
+}
+
+function setCloudSyncPending(pending) {
+  try {
+    if (pending) {
+      localStorage.setItem(CLOUD_SYNC_PENDING_KEY, '1');
+    } else {
+      localStorage.removeItem(CLOUD_SYNC_PENDING_KEY);
+    }
+  } catch (error) {}
+  renderCloudSyncInfo();
+}
+
+function hasCloudSyncPending() {
+  return readStoredText(CLOUD_SYNC_PENDING_KEY) === '1';
+}
+
+function clearCloudSyncRetry() {
+  clearTimeout(cloudSyncRetryTimer);
+  cloudSyncRetryTimer = null;
+}
+
+function scheduleCloudSyncRetry(delay = 15000) {
+  if (!getCloudSyncCode() || !navigator.onLine) return;
+  clearCloudSyncRetry();
+  cloudSyncRetryTimer = setTimeout(() => synchronizeCloudDatabase({ manual: false }), delay);
 }
 
 function parseTimestamp(value) {
@@ -1524,25 +1557,41 @@ async function cloudSyncKey(code) {
 async function requestCloudSync(method, code, body = null, params = {}) {
   const key = await cloudSyncKey(code);
   const query = new URLSearchParams({ key, ...params });
-  const response = await fetch(`${CLOUD_SYNC_ENDPOINT}?${query.toString()}`, {
-    method,
-    cache: 'no-store',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CLOUD_SYNC_TIMEOUT_MS);
 
-  if (response.status === 404 && method === 'GET') return null;
-
-  let payload = null;
   try {
-    payload = await response.json();
-  } catch (error) {}
+    const response = await fetch(`${CLOUD_SYNC_ENDPOINT}?${query.toString()}`, {
+      method,
+      cache: 'no-store',
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    throw new Error(payload?.error || `Ошибка облака: HTTP ${response.status}`);
+    if (response.status === 404 && method === 'GET') return null;
+
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (error) {}
+
+    if (!response.ok) {
+      throw new Error(payload?.error || `Ошибка облака: HTTP ${response.status}`);
+    }
+
+    return payload;
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('Облако не ответило вовремя. ГОРН повторит синхронизацию автоматически.');
+    }
+    if (!navigator.onLine || error instanceof TypeError) {
+      throw new Error('Нет связи с облаком. Изменения сохранены на устройстве.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return payload;
 }
 
 async function uploadCloudEnvelope(envelope, code) {
@@ -1646,6 +1695,17 @@ function databaseIsSmaller(source, target) {
   return source.clients < target.clients || source.works < target.works;
 }
 
+function databaseOmitsRecords(sourceData, targetData) {
+  const sourceClients = new Map((sourceData?.clients || []).map((client) => [client.id, client]));
+  for (const targetClient of targetData?.clients || []) {
+    const sourceClient = sourceClients.get(targetClient.id);
+    if (!sourceClient) return true;
+    const sourceWorkIds = new Set((sourceClient.works || []).map((work) => work.id));
+    if ((targetClient.works || []).some((work) => !sourceWorkIds.has(work.id))) return true;
+  }
+  return false;
+}
+
 function confirmReducedDatabase(direction, source, target) {
   const answer = window.prompt(
     `${direction} уменьшит количество данных.\n\n` +
@@ -1679,6 +1739,91 @@ async function rememberCloudSyncPoint(payload, fingerprint = '') {
 }
 
 
+function newestTimestamp(...values) {
+  return values.reduce((latest, value) => {
+    const timestamp = parseTimestamp(value);
+    return timestamp > parseTimestamp(latest) ? toText(value) : latest;
+  }, '');
+}
+
+function chooseNewestRecord(localRecord, remoteRecord) {
+  if (!localRecord) return remoteRecord;
+  if (!remoteRecord) return localRecord;
+  const localTime = parseTimestamp(localRecord.updatedAt || localRecord.createdAt);
+  const remoteTime = parseTimestamp(remoteRecord.updatedAt || remoteRecord.createdAt);
+  return remoteTime > localTime ? remoteRecord : localRecord;
+}
+
+function mergeWorkLists(localWorks = [], remoteWorks = []) {
+  const merged = new Map();
+  [...localWorks, ...remoteWorks].forEach((work) => {
+    const current = merged.get(work.id);
+    merged.set(work.id, chooseNewestRecord(current, work));
+  });
+  return Array.from(merged.values())
+    .map((work, index) => normalizeWork(work, index))
+    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+}
+
+function mergeClientLists(localClients = [], remoteClients = []) {
+  const localMap = new Map(localClients.map((client) => [client.id, client]));
+  const remoteMap = new Map(remoteClients.map((client) => [client.id, client]));
+  const ids = new Set([...localMap.keys(), ...remoteMap.keys()]);
+  const merged = [];
+
+  ids.forEach((id) => {
+    const localClient = localMap.get(id);
+    const remoteClient = remoteMap.get(id);
+    if (!localClient || !remoteClient) {
+      merged.push(normalizeClient(localClient || remoteClient, merged.length));
+      return;
+    }
+
+    const newest = chooseNewestRecord(localClient, remoteClient);
+    const combined = {
+      ...newest,
+      id,
+      works: mergeWorkLists(localClient.works, remoteClient.works),
+      createdAt: newestTimestamp(localClient.createdAt, remoteClient.createdAt) || newest.createdAt,
+      updatedAt: newestTimestamp(localClient.updatedAt, remoteClient.updatedAt) || newest.updatedAt,
+    };
+    merged.push(normalizeClient(combined, merged.length));
+  });
+
+  return merged.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+}
+
+function mergeCloudPayloads(localParsed, remoteParsed) {
+  const localTime = parseTimestamp(localParsed.dataUpdatedAt || localParsed.exportedAt);
+  const remoteTime = parseTimestamp(remoteParsed.dataUpdatedAt || remoteParsed.exportedAt);
+  const newest = remoteTime > localTime ? remoteParsed : localParsed;
+
+  return {
+    clients: mergeClientLists(localParsed.clients, remoteParsed.clients),
+    favorites: Array.from(new Set([...localParsed.favorites, ...remoteParsed.favorites])),
+    recent: Array.from(new Set([...localParsed.recent, ...remoteParsed.recent])).slice(0, 20),
+    businessProfile: normalizeBusinessProfile(newest.businessProfile),
+    appVersion: APP_META.version,
+    exportedAt: new Date().toISOString(),
+    dataUpdatedAt: new Date().toISOString(),
+    deviceId: getCloudDeviceId(),
+  };
+}
+
+async function applyAndUploadMergedDatabase(localParsed, remoteParsed) {
+  const merged = mergeCloudPayloads(localParsed, remoteParsed);
+  localStorage.setItem(PRE_IMPORT_BACKUP_KEY, JSON.stringify(createBackupPayload()));
+  applyImportedData(merged, { dataUpdatedAt: merged.dataUpdatedAt, sync: false });
+  setCloudSyncPending(true);
+  const uploaded = await uploadCloudDatabase({ manual: false, skipRemoteCheck: true });
+  if (uploaded) {
+    refreshCurrentViewAfterSync();
+    setCloudSyncStatus('Изменения устройств объединены и сохранены', 'ok');
+  }
+  return uploaded;
+}
+
+
 function setCloudSyncBusy(busy) {
   cloudSyncInProgress = busy;
   ['cloudUploadBtn', 'cloudDownloadBtn', 'cloudRestorePreviousBtn', 'saveCloudSyncCodeBtn', 'generateCloudSyncCodeBtn'].forEach(
@@ -1689,8 +1834,22 @@ function setCloudSyncBusy(busy) {
   );
 }
 
-function setCloudSyncStatus(message, tone = '') {
+function updateHeaderCloudSyncStatus(message = '', tone = '') {
+  const headerStatus = $('#headerSyncStatus');
+  if (!headerStatus) return;
+  if (!getCloudSyncCode()) {
+    headerStatus.className = 'header-sync-status hidden';
+    headerStatus.textContent = '';
+    return;
+  }
+  headerStatus.textContent = message;
+  headerStatus.className = `header-sync-status ${tone}`.trim();
+}
+
+function setCloudSyncStatus(message, tone = '', options = {}) {
+  const { sticky = tone === 'warn' || tone === 'error' } = options;
   cloudSyncStatusOverride = message;
+  clearTimeout(cloudSyncStatusTimer);
   const status = $('#cloudSyncStatus');
   const badge = $('#cloudSyncBadge');
 
@@ -1701,8 +1860,17 @@ function setCloudSyncStatus(message, tone = '') {
 
   if (badge) {
     badge.textContent =
-      tone === 'ok' ? 'Синхронизировано' : tone === 'error' ? 'Ошибка' : tone === 'warn' ? 'Внимание' : 'Подключено';
+      tone === 'ok' ? 'Синхронизировано' : tone === 'error' ? 'Ошибка' : tone === 'warn' ? 'Внимание' : 'Синхронизация';
     badge.className = `cloud-sync-badge ${tone}`.trim();
+  }
+
+  updateHeaderCloudSyncStatus(`● ${message}`, tone);
+
+  if (!sticky) {
+    cloudSyncStatusTimer = setTimeout(() => {
+      cloudSyncStatusOverride = '';
+      renderCloudSyncInfo();
+    }, 2600);
   }
 }
 
@@ -1713,6 +1881,7 @@ function renderCloudSyncInfo() {
   const badge = $('#cloudSyncBadge');
   const status = $('#cloudSyncStatus');
   const lastSync = getCloudLastSyncedAt();
+  const pending = hasCloudSyncPending();
 
   if (input && document.activeElement !== input) {
     input.value = formatCloudSyncCode(code);
@@ -1722,6 +1891,7 @@ function renderCloudSyncInfo() {
 
   if (!code) {
     cloudSyncStatusOverride = '';
+    updateHeaderCloudSyncStatus();
     if (badge) {
       badge.textContent = 'Не настроена';
       badge.className = 'cloud-sync-badge warn';
@@ -1735,18 +1905,37 @@ function renderCloudSyncInfo() {
 
   if (cloudSyncStatusOverride) return;
 
-  if (badge) {
-    badge.textContent = navigator.onLine ? 'Подключено' : 'Офлайн';
-    badge.className = `cloud-sync-badge ${navigator.onLine ? 'ok' : 'warn'}`;
+  let badgeText = 'Синхронизировано';
+  let message = lastSync
+    ? `Последняя синхронизация: ${new Date(lastSync).toLocaleString('ru-RU')}`
+    : 'Облачная база ещё не синхронизирована.';
+  let tone = 'ok';
+
+  if (!navigator.onLine) {
+    badgeText = 'Офлайн';
+    message = pending
+      ? 'Изменения сохранены на устройстве и отправятся после появления интернета.'
+      : `Нет интернета. ${message}`;
+    tone = 'warn';
+  } else if (cloudSyncInProgress) {
+    badgeText = 'Сохраняется';
+    message = 'Проверяем и сохраняем изменения…';
+    tone = '';
+  } else if (pending) {
+    badgeText = 'Ожидает отправки';
+    message = 'Есть изменения — ГОРН отправит их в облако автоматически.';
+    tone = 'warn';
   }
 
-  if (status) {
-    const suffix = lastSync
-      ? `Последняя синхронизация: ${new Date(lastSync).toLocaleString('ru-RU')}`
-      : 'Облачная база ещё не синхронизирована.';
-    status.textContent = navigator.onLine ? suffix : `Нет интернета. ${suffix}`;
-    status.className = `cloud-sync-status ${navigator.onLine ? '' : 'warn'}`.trim();
+  if (badge) {
+    badge.textContent = badgeText;
+    badge.className = `cloud-sync-badge ${tone}`.trim();
   }
+  if (status) {
+    status.textContent = message;
+    status.className = `cloud-sync-status ${tone}`.trim();
+  }
+  updateHeaderCloudSyncStatus(`● ${badgeText}${lastSync && !pending && navigator.onLine ? ` • ${new Date(lastSync).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}` : ''}`, tone);
 }
 
 function refreshCurrentViewAfterSync() {
@@ -1803,7 +1992,7 @@ async function uploadCloudDatabase(options = {}) {
         return true;
       }
 
-      if (databaseIsSmaller(localStats, remoteStats)) {
+      if (databaseIsSmaller(localStats, remoteStats) || databaseOmitsRecords(localParsed, remoteParsed)) {
         if (!manual || !confirmReducedDatabase('Отправка в облако', localStats, remoteStats)) {
           setCloudSyncStatus('Отправка остановлена: на устройстве меньше данных', 'warn');
           return false;
@@ -1825,7 +2014,15 @@ async function uploadCloudDatabase(options = {}) {
   const envelope = await encryptCloudPayload(localPayload, code);
   await uploadCloudEnvelope(envelope, code);
   await rememberCloudSyncPoint(localParsed, localFingerprint);
-  setCloudSyncStatus('База отправлена в облако', 'ok');
+  const currentFingerprint = await localDataFingerprint();
+  const changedDuringUpload = currentFingerprint !== localFingerprint;
+  setCloudSyncPending(changedDuringUpload);
+  if (changedDuringUpload) {
+    setCloudSyncStatus('Новые изменения будут отправлены следом', 'warn', { sticky: false });
+    scheduleCloudSync(500);
+  } else {
+    setCloudSyncStatus('База сохранена в облаке', 'ok');
+  }
   renderCloudSyncInfo();
   return true;
 }
@@ -1871,7 +2068,7 @@ async function downloadCloudDatabase(options = {}) {
     return false;
   }
 
-  if (databaseIsSmaller(remoteStats, localStats)) {
+  if (databaseIsSmaller(remoteStats, localStats) || databaseOmitsRecords(imported, { clients: state.clients })) {
     if (!manual || !confirmReducedDatabase('Загрузка из облака', remoteStats, localStats)) {
       setCloudSyncStatus('Загрузка остановлена: в облаке меньше данных', 'warn');
       return false;
@@ -1893,6 +2090,7 @@ async function downloadCloudDatabase(options = {}) {
     sync: false,
   });
   await rememberCloudSyncPoint(imported, remoteFingerprint);
+  setCloudSyncPending(false);
 
   if (previous) {
     await uploadCloudDatabase({ manual: false, skipRemoteCheck: true });
@@ -1918,8 +2116,9 @@ async function synchronizeCloudDatabase(options = {}) {
     return;
   }
 
+  clearCloudSyncRetry();
   setCloudSyncBusy(true);
-  setCloudSyncStatus('Безопасная синхронизация…');
+  setCloudSyncStatus('Проверяем облачную базу…', '', { sticky: false });
 
   try {
     const localPayload = createBackupPayload();
@@ -1930,14 +2129,10 @@ async function synchronizeCloudDatabase(options = {}) {
 
     if (!remoteEnvelope) {
       if (databaseIsEmpty(localStats)) {
-        setCloudSyncStatus('Нет данных для первой отправки в облако', 'warn');
-      } else if (manual) {
-        const approved = window.confirm(
-          `В облаке пока нет базы. Отправить данные этого устройства?\n\n${databaseStatsText(localStats)}.`,
-        );
-        if (approved) await uploadCloudDatabase({ manual: false, skipRemoteCheck: true });
+        setCloudSyncPending(false);
+        setCloudSyncStatus('Облако готово — данных для отправки пока нет', 'ok');
       } else {
-        setCloudSyncStatus('Облако пусто — нажмите «Отправить в облако»', 'warn');
+        await uploadCloudDatabase({ manual: false, skipRemoteCheck: true });
       }
       return;
     }
@@ -1950,7 +2145,8 @@ async function synchronizeCloudDatabase(options = {}) {
 
     if (localFingerprint === remoteFingerprint) {
       await rememberCloudSyncPoint(remoteParsed, remoteFingerprint);
-      setCloudSyncStatus('Все устройства используют одну базу', 'ok');
+      setCloudSyncPending(false);
+      setCloudSyncStatus('Все устройства синхронизированы', 'ok');
       return;
     }
 
@@ -1959,33 +2155,11 @@ async function synchronizeCloudDatabase(options = {}) {
         await downloadCloudDatabase({ manual: false, skipConfirm: true });
         return;
       }
-
       if (!databaseIsEmpty(localStats) && databaseIsEmpty(remoteStats)) {
-        if (manual) {
-          const approved = window.confirm(
-            `Облачная база пуста. Отправить восстановленные данные этого устройства?\n\n${databaseStatsText(localStats)}.`,
-          );
-          if (approved) await uploadCloudDatabase({ manual: false, skipRemoteCheck: true });
-        } else {
-          setCloudSyncStatus('Облако пусто — данные устройства сохранены', 'warn');
-        }
+        await uploadCloudDatabase({ manual: false, skipRemoteCheck: true });
         return;
       }
-
-      setCloudSyncStatus('Нужно выбрать основную базу вручную', 'warn');
-      if (manual) {
-        const choice = toText(
-          window.prompt(
-            `На устройстве и в облаке разные базы.\n\n` +
-              `Устройство: ${databaseStatsText(localStats)}.\n` +
-              `Облако: ${databaseStatsText(remoteStats)}.\n\n` +
-              'Введите УСТРОЙСТВО, чтобы отправить текущую базу, или ОБЛАКО, чтобы загрузить облачную.',
-            '',
-          ),
-        ).trim().toUpperCase();
-        if (choice === 'УСТРОЙСТВО') await uploadCloudDatabase({ manual: true });
-        if (choice === 'ОБЛАКО') await downloadCloudDatabase({ manual: true });
-      }
+      await applyAndUploadMergedDatabase(localParsed, remoteParsed);
       return;
     }
 
@@ -1993,8 +2167,9 @@ async function synchronizeCloudDatabase(options = {}) {
     const remoteChanged = remoteFingerprint !== lastFingerprint;
 
     if (localChanged && !remoteChanged) {
-      if (databaseIsSmaller(localStats, remoteStats)) {
-        setCloudSyncStatus('Удаления не отправлены автоматически — подтвердите вручную', 'warn');
+      if (databaseIsSmaller(localStats, remoteStats) || databaseOmitsRecords(localParsed, remoteParsed)) {
+        setCloudSyncPending(true);
+        setCloudSyncStatus('Удаление ждёт ручного подтверждения', 'warn');
         if (manual) await uploadCloudDatabase({ manual: true });
       } else {
         await uploadCloudDatabase({ manual: false, skipRemoteCheck: true });
@@ -2003,8 +2178,8 @@ async function synchronizeCloudDatabase(options = {}) {
     }
 
     if (!localChanged && remoteChanged) {
-      if (databaseIsSmaller(remoteStats, localStats)) {
-        setCloudSyncStatus('Облачная база меньше — автозагрузка остановлена', 'warn');
+      if (databaseIsSmaller(remoteStats, localStats) || databaseOmitsRecords(remoteParsed, localParsed)) {
+        setCloudSyncStatus('В облаке меньше данных — автозагрузка остановлена', 'warn');
         if (manual) await downloadCloudDatabase({ manual: true });
       } else {
         await downloadCloudDatabase({ manual: false, skipConfirm: true });
@@ -2012,23 +2187,25 @@ async function synchronizeCloudDatabase(options = {}) {
       return;
     }
 
-    setCloudSyncStatus('На двух устройствах есть разные изменения', 'warn');
-    if (manual) {
-      const choice = toText(
-        window.prompt(
-          `Конфликт синхронизации.\n\n` +
-            `Устройство: ${databaseStatsText(localStats)}.\n` +
-            `Облако: ${databaseStatsText(remoteStats)}.\n\n` +
-            'Введите УСТРОЙСТВО или ОБЛАКО. Отмена ничего не изменит.',
-          '',
-        ),
-      ).trim().toUpperCase();
-      if (choice === 'УСТРОЙСТВО') await uploadCloudDatabase({ manual: true });
-      if (choice === 'ОБЛАКО') await downloadCloudDatabase({ manual: true });
+    if (localChanged && remoteChanged) {
+      await applyAndUploadMergedDatabase(localParsed, remoteParsed);
+      return;
+    }
+
+    const localUpdated = parseTimestamp(localParsed.dataUpdatedAt || localParsed.exportedAt);
+    const remoteUpdated = parseTimestamp(remoteParsed.dataUpdatedAt || remoteParsed.exportedAt);
+    if (remoteUpdated > localUpdated && !databaseIsSmaller(remoteStats, localStats) && !databaseOmitsRecords(remoteParsed, localParsed)) {
+      await downloadCloudDatabase({ manual: false, skipConfirm: true });
+    } else if (localUpdated > remoteUpdated && !databaseIsSmaller(localStats, remoteStats) && !databaseOmitsRecords(localParsed, remoteParsed)) {
+      await uploadCloudDatabase({ manual: false, skipRemoteCheck: true });
+    } else {
+      await applyAndUploadMergedDatabase(localParsed, remoteParsed);
     }
   } catch (error) {
     console.error('ГОРН: ошибка облачной синхронизации', error);
+    setCloudSyncPending(true);
     setCloudSyncStatus(error.message || 'Не удалось синхронизировать базу', 'error');
+    scheduleCloudSyncRetry();
     if (manual) window.alert(error.message || 'Не удалось синхронизировать базу.');
   } finally {
     setCloudSyncBusy(false);
@@ -2036,17 +2213,27 @@ async function synchronizeCloudDatabase(options = {}) {
   }
 }
 
-function scheduleCloudSync(delay = 3500) {
-  if (!getCloudSyncCode() || !navigator.onLine) return;
+function scheduleCloudSync(delay = 1200) {
+  if (!getCloudSyncCode()) return;
   clearTimeout(cloudSyncTimer);
+  if (!navigator.onLine) {
+    renderCloudSyncInfo();
+    return;
+  }
   cloudSyncTimer = setTimeout(() => synchronizeCloudDatabase({ manual: false }), delay);
 }
 
 function initializeCloudSync() {
   ensureDataUpdatedAt();
   renderCloudSyncInfo();
+  clearInterval(cloudSyncHeartbeatTimer);
+  cloudSyncHeartbeatTimer = setInterval(() => {
+    if (document.visibilityState === 'visible' && navigator.onLine) {
+      scheduleCloudSync(250);
+    }
+  }, CLOUD_SYNC_HEARTBEAT_MS);
   if (getCloudSyncCode() && navigator.onLine) {
-    setTimeout(() => synchronizeCloudDatabase({ manual: false }), 700);
+    setTimeout(() => synchronizeCloudDatabase({ manual: false }), 900);
   }
 }
 
@@ -2062,6 +2249,7 @@ function saveCloudSyncCode() {
   try {
     localStorage.setItem(CLOUD_SYNC_CODE_KEY, code);
     clearCloudSyncPoint();
+    setCloudSyncPending(true);
   } catch (error) {
     window.alert('Не удалось сохранить код на этом устройстве.');
     return;
@@ -2082,6 +2270,7 @@ function disconnectCloudSync() {
 
   localStorage.removeItem(CLOUD_SYNC_CODE_KEY);
   clearCloudSyncPoint();
+  setCloudSyncPending(false);
   cloudSyncStatusOverride = '';
   const input = $('#cloudSyncCodeInput');
   if (input) input.value = '';
