@@ -1,5 +1,5 @@
 const APP_META = {
-  version: '1.6.2',
+  version: '1.6.3',
   status: 'Stable',
   updated: '21.07.2026',
 };
@@ -2965,7 +2965,10 @@ function renderPlan() {
   document.querySelectorAll('[data-plan-client-id]').forEach((button) => {
     button.onclick = (event) => {
       event.stopPropagation();
-      openClientFromPlan(button.dataset.planClientId);
+      openWorkFromAllWorks(
+        button.dataset.planClientId,
+        button.dataset.planWorkId,
+      );
     };
   });
   document.querySelectorAll('[data-plan-calendar-client-id]').forEach((button) => {
@@ -3034,7 +3037,7 @@ function planWorkCard(entry) {
       <div class="plan-work-actions">
         ${phoneHref ? `<a class="client-call" href="tel:${esc(phoneHref)}">Позвонить</a>` : ''}
         <button class="calendar-action-btn" data-plan-calendar-client-id="${esc(clientId)}" data-plan-calendar-work-id="${esc(work.id)}" type="button">🗓 В календарь</button>
-        <button class="client-open-btn" data-plan-client-id="${esc(clientId)}" type="button">Открыть клиента</button>
+        <button class="client-open-btn" data-plan-client-id="${esc(clientId)}" data-plan-work-id="${esc(work.id)}" type="button">Открыть работу</button>
       </div>
     </article>`;
 }
@@ -4668,6 +4671,7 @@ function collectDashboardAttention() {
       type: workEndDate(entry.work) < today ? 'overdue' : 'today',
       priority: workEndDate(entry.work) < today ? 0 : 1,
       clientId: entry.clientId,
+      workId: entry.work.id,
       clientName: entry.clientName,
       phone: entry.clientPhone,
       title: entry.work.title,
@@ -4683,6 +4687,7 @@ function collectDashboardAttention() {
       type: 'contact',
       priority: 2,
       clientId: client.id,
+      workId: '',
       clientName: client.name,
       phone: client.phone,
       title: 'Связаться с клиентом',
@@ -4717,6 +4722,10 @@ function dashboardAttentionCard(item) {
     item.amount ? `💰 ${esc(item.amount)}` : '',
   ].filter(Boolean);
 
+  const openAction = item.workId
+    ? `<button data-dashboard-client-id="${esc(item.clientId)}" data-dashboard-work-id="${esc(item.workId)}" type="button">Открыть работу</button>`
+    : `<button data-dashboard-client-id="${esc(item.clientId)}" type="button">Открыть клиента</button>`;
+
   return `
     <article class="dashboard-attention-card">
       <div class="dashboard-attention-main">
@@ -4728,7 +4737,7 @@ function dashboardAttentionCard(item) {
       </div>
       <div class="dashboard-attention-actions">
         ${phoneHref ? `<a href="tel:${esc(phoneHref)}">Позвонить</a>` : ''}
-        <button data-dashboard-client-id="${esc(item.clientId)}" type="button">Открыть</button>
+        ${openAction}
       </div>
     </article>`;
 }
@@ -4755,7 +4764,15 @@ function renderDashboard() {
   if (empty) empty.classList.toggle('hidden', attention.length > 0);
 
   document.querySelectorAll('[data-dashboard-client-id]').forEach((button) => {
-    button.onclick = () => openClientFromPlan(button.dataset.dashboardClientId);
+    button.onclick = () => {
+      const clientId = button.dataset.dashboardClientId;
+      const workId = button.dataset.dashboardWorkId;
+      if (workId) {
+        openWorkFromAllWorks(clientId, workId);
+        return;
+      }
+      openClientFromPlan(clientId);
+    };
   });
 }
 
