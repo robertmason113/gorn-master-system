@@ -1309,3 +1309,257 @@ textarea{
 @media(min-width:760px){.all-works-summary-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:620px){.works-header{flex-direction:column}.works-header .compact-btn{width:100%}.all-work-heading{align-items:flex-start}.all-work-actions{display:grid;grid-template-columns:1fr}.all-work-actions>*{width:100%;text-align:center}}
 @media(max-width:520px){.bottom-nav button{font-size:18px}.bottom-nav button span{font-size:9px}.all-works-summary-card strong{font-size:21px}}
+
+/* v1.6.2 — точная мобильная раскладка iPhone/iPad */
+html{
+  width:100%;
+  max-width:100%;
+  overflow-x:clip;
+  scroll-padding-top:148px;
+}
+body{
+  width:100%;
+  max-width:100%;
+  overflow-x:clip;
+}
+.container,
+.client-form,
+.work-form,
+.plan-work-card,
+.all-work-card,
+.work-period-panel,
+.work-calendar-panel,
+.work-estimate-panel,
+.estimate-document-panel,
+.estimate-extra-panel,
+.estimate-profile-panel,
+.estimate-group,
+.form-grid,
+.form-field,
+.work-period-grid,
+.work-calendar-grid,
+.estimate-document-grid,
+.estimate-extra-grid,
+.estimate-profile-grid,
+.estimate-preset-grid,
+.estimate-add-grid,
+.estimate-row{
+  min-width:0;
+  max-width:100%;
+}
+input,
+select,
+textarea,
+button{
+  min-width:0;
+  max-width:100%;
+}
+input[type="date"],
+input[type="time"],
+input[type="number"]{
+  display:block;
+  width:100%;
+  min-width:0;
+  max-width:100%;
+}
+.form-field,
+.work-period-panel,
+.work-calendar-panel,
+.work-estimate-panel,
+.estimate-document-panel{
+  scroll-margin-top:150px;
+}
+.plan-work-title,
+.plan-work-details,
+.plan-work-notes,
+.all-work-title,
+.all-work-client,
+.all-work-details,
+.all-work-notes,
+.client-name,
+.client-details,
+.work-title,
+.work-details,
+.work-period-preview,
+.work-calendar-heading h4,
+.work-calendar-heading p,
+.client-form-header h2,
+.work-form .client-form-header h3{
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+.plan-work-actions,
+.work-card-actions,
+.all-work-actions{
+  min-width:0;
+  max-width:100%;
+}
+.plan-work-actions > *,
+.work-card-actions > *,
+.all-work-actions > *{
+  min-width:0;
+  max-width:100%;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+
+@media(max-width:620px){
+  .container{
+    width:100%;
+    padding-left:16px;
+    padding-right:16px;
+    padding-bottom:calc(108px + env(safe-area-inset-bottom));
+  }
+  .plan-work-card{
+    width:100%;
+    overflow:hidden;
+  }
+  .plan-work-main,
+  .plan-work-heading,
+  .plan-work-heading > div{
+    width:100%;
+    min-width:0;
+  }
+  .plan-work-actions{
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+    width:100%;
+    align-items:stretch;
+    justify-content:stretch;
+    gap:9px;
+  }
+  .plan-work-actions > *{
+    display:flex;
+    width:100%;
+    min-height:48px;
+    align-items:center;
+    justify-content:center;
+    padding:11px 12px;
+    text-align:center;
+  }
+  .client-form-header{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    align-items:start;
+    width:100%;
+  }
+  .client-form-header h2,
+  .work-form .client-form-header h3{
+    min-width:0;
+    font-size:clamp(22px,7vw,30px);
+    line-height:1.12;
+  }
+  .back-screen-btn{
+    width:auto;
+    max-width:42vw;
+    white-space:nowrap;
+  }
+  .work-period-panel,
+  .work-calendar-panel,
+  .work-estimate-panel{
+    padding:13px;
+    overflow:hidden;
+  }
+  .work-period-grid,
+  .work-calendar-grid,
+  .estimate-document-grid,
+  .estimate-extra-grid,
+  .estimate-profile-grid{
+    display:grid;
+    grid-template-columns:minmax(0,1fr)!important;
+    width:100%;
+  }
+  .work-weekend-toggle{
+    width:100%;
+    min-width:0;
+  }
+  .work-weekend-toggle span{
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+  .work-calendar-heading{
+    width:100%;
+  }
+  .work-calendar-heading > div{
+    min-width:0;
+    width:100%;
+  }
+  .work-calendar-heading .calendar-export-btn{
+    display:flex;
+    width:100%;
+    min-height:48px;
+    align-items:center;
+    justify-content:center;
+    white-space:normal;
+    text-align:center;
+  }
+  .estimate-document-panel,
+  .estimate-extra-panel,
+  .estimate-profile-panel,
+  .estimate-group{
+    width:100%;
+    overflow:hidden;
+  }
+  .estimate-preset-grid,
+  .estimate-add-grid{
+    width:100%;
+    min-width:0;
+  }
+  .estimate-preset-grid select,
+  .estimate-preset-grid input,
+  .estimate-add-grid input,
+  .estimate-row input{
+    width:100%;
+    min-width:0;
+    max-width:100%;
+  }
+  .estimate-row{
+    width:100%;
+    min-width:0;
+    grid-template-columns:minmax(0,1fr) 48px 48px 70px 30px;
+    gap:5px;
+  }
+  .estimate-row strong{
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+}
+
+@media(max-width:390px){
+  .app-header{
+    padding-left:12px;
+    padding-right:12px;
+  }
+  .container{
+    padding-left:12px;
+    padding-right:12px;
+  }
+  .brand{
+    gap:10px;
+  }
+  .brand img{
+    width:50px;
+    height:50px;
+  }
+  .brand h1{
+    font-size:25px;
+  }
+  .client-form,
+  .work-form{
+    padding:13px;
+  }
+  .client-form-header{
+    grid-template-columns:minmax(0,1fr);
+  }
+  .back-screen-btn{
+    width:100%;
+    max-width:none;
+    margin-top:4px;
+  }
+  .work-days-quick{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .estimate-row{
+    grid-template-columns:minmax(0,1fr) 44px 44px 64px 28px;
+  }
+}

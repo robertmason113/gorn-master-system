@@ -1,7 +1,7 @@
 const APP_META = {
-  version: '1.6.1',
+  version: '1.6.2',
   status: 'Stable',
-  updated: '18.07.2026',
+  updated: '21.07.2026',
 };
 
 const CLIENT_STATUSES = ['Новый', 'Связаться', 'Выезд назначен', 'В работе', 'Завершён', 'Отказ'];
