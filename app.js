@@ -1,7 +1,7 @@
 const APP_META = {
-  version: '1.7.2',
+  version: '1.8.0',
   status: 'Stable',
-  updated: '24.07.2026',
+  updated: '25.07.2026',
 };
 
 const CLIENT_STATUSES = ['Новый', 'Связаться', 'Выезд назначен', 'В работе', 'Завершён', 'Отказ'];
@@ -183,6 +183,7 @@ const MAX_WORK_PHOTOS_TOTAL_CHARS = 2800000;
 const BACKUP_FORMAT = 'GORN_MASTER_SYSTEM_BACKUP';
 const BACKUP_SCHEMA_VERSION = 1;
 const PRE_IMPORT_BACKUP_KEY = 'gornBeforeLastImport';
+const TRASH_STORAGE_KEY = 'gornTrash';
 
 const CLOUD_SYNC_FORMAT = 'GORN_CLOUD_SYNC';
 const CLOUD_SYNC_SCHEMA_VERSION = 1;
@@ -240,9 +241,12 @@ const state = {
   workEstimateDraft: null,
   favorites: readStoredArray('gornFavorites'),
   recent: readStoredArray('gornRecent'),
+  trash: readStoredTrash(),
   clients: readStoredClients(),
   businessProfile: readStoredBusinessProfile(),
 };
+
+state.clients = applyTrashActionsToClients(state.clients, state.trash);
 
 let pendingServiceWorker = null;
 let systemBannerMode = '';
@@ -300,6 +304,519 @@ function readStoredBusinessProfile() {
     localStorage.removeItem(BUSINESS_PROFILE_STORAGE_KEY);
     return normalizeBusinessProfile({});
   }
+}
+
+
+function trashTimestamp(value) {
+  const timestamp = Date.parse(toText(value));
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function trashEntryKey(entry = {}) {
+  const kind = entry.kind === 'work' ? 'work' : 'client';
+  const entityId = toText(entry.entityId || entry.id);
+  const clientId = kind === 'work'
+    ? toText(entry.clientId)
+    : entityId;
+
+  return kind === 'work'
+    ? `work:${clientId}:${entityId}`
+    : `client:${entityId}`;
+}
+
+function normalizeTrashEntry(rawEntry, index = 0) {
+  const source =
+    rawEntry && typeof rawEntry === 'object'
+      ? rawEntry
+      : {};
+
+  const kind = source.kind === 'work' ? 'work' : 'client';
+  const rawRecord =
+    source.record && typeof source.record === 'object'
+      ? source.record
+      : null;
+
+  const entityId = toText(
+    source.entityId ||
+      source.workId ||
+      source.clientId ||
+      rawRecord?.id,
+    `TRASH-${index + 1}`,
+  );
+
+  const clientId = kind === 'work'
+    ? toText(source.clientId || source.clientRecord?.id)
+    : entityId;
+
+  const rawStatus = toText(source.status, 'trashed');
+  const status = ['trashed', 'restored', 'purged'].includes(rawStatus)
+    ? rawStatus
+    : 'trashed';
+
+  const actionAt = toText(
+    source.actionAt ||
+      source.restoredAt ||
+      source.purgedAt ||
+      source.deletedAt,
+    new Date().toISOString(),
+  );
+
+  let record = null;
+
+  if (status !== 'purged' && rawRecord) {
+    record = kind === 'work'
+      ? normalizeWork(rawRecord, index)
+      : normalizeClient(rawRecord, index);
+  }
+
+  let clientRecord = null;
+
+  if (
+    kind === 'work' &&
+    source.clientRecord &&
+    typeof source.clientRecord === 'object'
+  ) {
+    clientRecord = normalizeClient(
+      {
+        ...source.clientRecord,
+        works: [],
+      },
+      index,
+    );
+  }
+
+  const title = toText(
+    source.title ||
+      (kind === 'work' ? record?.title : record?.name),
+    kind === 'work' ? 'Работа без названия' : 'Клиент без имени',
+  );
+
+  return {
+    key: kind === 'work'
+      ? `work:${clientId}:${entityId}`
+      : `client:${entityId}`,
+    kind,
+    entityId,
+    clientId,
+    clientName: toText(
+      source.clientName ||
+        clientRecord?.name ||
+        (kind === 'client' ? record?.name : ''),
+    ),
+    title,
+    status,
+    record,
+    clientRecord,
+    deletedAt: toText(source.deletedAt, actionAt),
+    restoredAt: toText(source.restoredAt),
+    purgedAt: toText(source.purgedAt),
+    actionAt,
+    deviceId: toText(source.deviceId),
+  };
+}
+
+function normalizeTrash(rawTrash) {
+  const rawEntries = Array.isArray(rawTrash)
+    ? rawTrash
+    : Array.isArray(rawTrash?.entries)
+      ? rawTrash.entries
+      : [];
+
+  const newestByKey = new Map();
+
+  rawEntries.forEach((rawEntry, index) => {
+    const entry = normalizeTrashEntry(rawEntry, index);
+    const current = newestByKey.get(entry.key);
+
+    if (
+      !current ||
+      trashTimestamp(entry.actionAt) >= trashTimestamp(current.actionAt)
+    ) {
+      newestByKey.set(entry.key, entry);
+    }
+  });
+
+  return {
+    entries: Array.from(newestByKey.values()).sort(
+      (a, b) => trashTimestamp(b.actionAt) - trashTimestamp(a.actionAt),
+    ),
+  };
+}
+
+function readStoredTrash() {
+  try {
+    const raw = JSON.parse(
+      localStorage.getItem(TRASH_STORAGE_KEY) || '{"entries":[]}',
+    );
+    return normalizeTrash(raw);
+  } catch (error) {
+    console.warn('GORN: корзина была восстановлена', error);
+    localStorage.removeItem(TRASH_STORAGE_KEY);
+    return normalizeTrash({});
+  }
+}
+
+function mergeTrashStates(localTrash, remoteTrash) {
+  return normalizeTrash({
+    entries: [
+      ...normalizeTrash(localTrash).entries,
+      ...normalizeTrash(remoteTrash).entries,
+    ],
+  });
+}
+
+function setTrashEntry(rawEntry) {
+  state.trash = mergeTrashStates(
+    state.trash,
+    {
+      entries: [rawEntry],
+    },
+  );
+}
+
+function activeTrashEntries() {
+  return normalizeTrash(state.trash).entries.filter(
+    (entry) => entry.status === 'trashed',
+  );
+}
+
+function applyTrashActionsToClients(rawClients, rawTrash) {
+  const clients = Array.isArray(rawClients)
+    ? rawClients.map((client, index) =>
+        normalizeClient(
+          JSON.parse(JSON.stringify(client)),
+          index,
+        ),
+      )
+    : [];
+
+  const trash = normalizeTrash(rawTrash);
+  const clientMap = new Map(
+    clients.map((client) => [client.id, client]),
+  );
+
+  const clientActions = trash.entries.filter(
+    (entry) => entry.kind === 'client',
+  );
+
+  const blockedClientIds = new Set();
+
+  clientActions.forEach((entry) => {
+    if (entry.status === 'restored' && entry.record) {
+      clientMap.set(
+        entry.entityId,
+        normalizeClient(
+          JSON.parse(JSON.stringify(entry.record)),
+          clientMap.size,
+        ),
+      );
+      return;
+    }
+
+    if (entry.status === 'trashed' || entry.status === 'purged') {
+      clientMap.delete(entry.entityId);
+      blockedClientIds.add(entry.entityId);
+    }
+  });
+
+  const workActions = trash.entries.filter(
+    (entry) => entry.kind === 'work',
+  );
+
+  workActions.forEach((entry) => {
+    if (blockedClientIds.has(entry.clientId)) return;
+
+    let client = clientMap.get(entry.clientId);
+
+    if (entry.status === 'restored' && entry.record) {
+      if (!client && entry.clientRecord) {
+        client = normalizeClient(
+          {
+            ...entry.clientRecord,
+            id: entry.clientId,
+            works: [],
+          },
+          clientMap.size,
+        );
+      }
+
+      if (!client) return;
+
+      const works = new Map(
+        (client.works || []).map((work) => [work.id, work]),
+      );
+
+      works.set(
+        entry.entityId,
+        normalizeWork(
+          JSON.parse(JSON.stringify(entry.record)),
+          works.size,
+        ),
+      );
+
+      clientMap.set(entry.clientId, {
+        ...client,
+        works: Array.from(works.values()),
+        updatedAt: entry.actionAt,
+      });
+
+      return;
+    }
+
+    if (
+      client &&
+      (entry.status === 'trashed' || entry.status === 'purged')
+    ) {
+      clientMap.set(entry.clientId, {
+        ...client,
+        works: (client.works || []).filter(
+          (work) => work.id !== entry.entityId,
+        ),
+        updatedAt: entry.actionAt,
+      });
+    }
+  });
+
+  return Array.from(clientMap.values())
+    .map((client, index) => normalizeClient(client, index))
+    .sort(
+      (a, b) =>
+        String(b.updatedAt).localeCompare(String(a.updatedAt)),
+    );
+}
+
+function databaseOmissionsCoveredByTrash(sourceData, targetData) {
+  const sourceClients = new Map(
+    (sourceData?.clients || []).map(
+      (client) => [client.id, client],
+    ),
+  );
+
+  const trashEntries = new Map(
+    normalizeTrash(sourceData?.trash).entries.map(
+      (entry) => [entry.key, entry],
+    ),
+  );
+
+  const coversDeletion = (entry, record) => {
+    if (!entry) return false;
+
+    if (!['trashed', 'purged'].includes(entry.status)) {
+      return false;
+    }
+
+    return (
+      trashTimestamp(entry.actionAt) >=
+      trashTimestamp(record?.updatedAt || record?.createdAt)
+    );
+  };
+
+  for (const targetClient of targetData?.clients || []) {
+    const sourceClient = sourceClients.get(targetClient.id);
+
+    if (!sourceClient) {
+      const entry = trashEntries.get(
+        `client:${targetClient.id}`,
+      );
+
+      if (!coversDeletion(entry, targetClient)) {
+        return false;
+      }
+
+      continue;
+    }
+
+    const sourceWorkIds = new Set(
+      (sourceClient.works || []).map((work) => work.id),
+    );
+
+    for (const targetWork of targetClient.works || []) {
+      if (sourceWorkIds.has(targetWork.id)) continue;
+
+      const entry = trashEntries.get(
+        `work:${targetClient.id}:${targetWork.id}`,
+      );
+
+      if (!coversDeletion(entry, targetWork)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+function formatTrashDate(value) {
+  const date = new Date(toText(value));
+
+  if (Number.isNaN(date.getTime())) return 'Дата не указана';
+
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function trashEntryLabel(entry) {
+  if (entry.kind === 'client') {
+    return `Клиент: ${entry.title}`;
+  }
+
+  return `Работа: ${entry.title}`;
+}
+
+function renderTrashInfo() {
+  const stats = $('#trashStats');
+  const list = $('#trashList');
+  const empty = $('#trashEmpty');
+  const badge = $('#trashCountBadge');
+
+  if (!stats || !list || !empty || !badge) return;
+
+  const entries = activeTrashEntries();
+
+  const clientsCount = entries.filter(
+    (entry) => entry.kind === 'client',
+  ).length;
+
+  const worksCount = entries.filter(
+    (entry) => entry.kind === 'work',
+  ).length;
+
+  badge.textContent = `(${entries.length})`;
+
+  stats.textContent = entries.length
+    ? `В корзине: ${clientsCount} клиентов, ${worksCount} работ`
+    : 'Корзина пуста';
+
+  empty.classList.toggle('hidden', entries.length > 0);
+
+  list.innerHTML = entries
+    .map((entry) => {
+      const secondary = entry.kind === 'work'
+        ? `${entry.clientName || 'Клиент не указан'} · ${formatTrashDate(entry.deletedAt)}`
+        : `${(entry.record?.works || []).length} работ · ${formatTrashDate(entry.deletedAt)}`;
+
+      return `
+        <article class="trash-card">
+          <div class="trash-card-copy">
+            <span class="trash-kind">
+              ${entry.kind === 'client' ? 'Клиент' : 'Работа'}
+            </span>
+            <strong>${esc(entry.title)}</strong>
+            <small>${esc(secondary)}</small>
+          </div>
+
+          <div class="trash-card-actions">
+            <button
+              class="trash-restore-btn"
+              data-trash-restore="${esc(entry.key)}"
+              type="button"
+            >
+              ↩ Восстановить
+            </button>
+
+            <button
+              class="trash-purge-btn"
+              data-trash-purge="${esc(entry.key)}"
+              type="button"
+            >
+              Удалить окончательно
+            </button>
+          </div>
+        </article>
+      `;
+    })
+    .join('');
+
+  list
+    .querySelectorAll('[data-trash-restore]')
+    .forEach((button) => {
+      button.onclick = () =>
+        restoreTrashEntry(button.dataset.trashRestore);
+    });
+
+  list
+    .querySelectorAll('[data-trash-purge]')
+    .forEach((button) => {
+      button.onclick = () =>
+        purgeTrashEntry(button.dataset.trashPurge);
+    });
+}
+
+function restoreTrashEntry(key) {
+  const entry = normalizeTrash(state.trash).entries.find(
+    (item) => item.key === key,
+  );
+
+  if (!entry || entry.status !== 'trashed') return;
+
+  if (
+    !window.confirm(
+      `Восстановить запись?\n\n${trashEntryLabel(entry)}`,
+    )
+  ) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+
+  setTrashEntry({
+    ...entry,
+    status: 'restored',
+    restoredAt: now,
+    actionAt: now,
+    deviceId: getCloudDeviceId(),
+  });
+
+  state.clients = applyTrashActionsToClients(
+    state.clients,
+    state.trash,
+  );
+
+  save();
+  renderBackupInfo();
+  showToast('Запись восстановлена');
+}
+
+function purgeTrashEntry(key) {
+  const entry = normalizeTrash(state.trash).entries.find(
+    (item) => item.key === key,
+  );
+
+  if (!entry || entry.status !== 'trashed') return;
+
+  if (
+    !window.confirm(
+      `Удалить без возможности восстановления?\n\n${trashEntryLabel(entry)}\n\nЗапись исчезнет из корзины на всех устройствах.`,
+    )
+  ) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+
+  setTrashEntry({
+    ...entry,
+    status: 'purged',
+    record: null,
+    clientRecord: null,
+    purgedAt: now,
+    actionAt: now,
+    deviceId: getCloudDeviceId(),
+  });
+
+  state.clients = applyTrashActionsToClients(
+    state.clients,
+    state.trash,
+  );
+
+  save();
+  renderBackupInfo();
+  showToast('Запись удалена окончательно');
 }
 
 function addDaysISO(value, days = 14) {
@@ -1341,6 +1858,7 @@ function save(options = {}) {
     localStorage.setItem('gornFavorites', JSON.stringify(state.favorites));
     localStorage.setItem('gornRecent', JSON.stringify(state.recent));
     localStorage.setItem('gornClients', JSON.stringify(state.clients));
+    localStorage.setItem(TRASH_STORAGE_KEY, JSON.stringify(state.trash));
     localStorage.setItem(BUSINESS_PROFILE_STORAGE_KEY, JSON.stringify(state.businessProfile));
 
     if (markChanged) {
@@ -2042,6 +2560,7 @@ function normalizedBackupData(parsed) {
     clients: parsed.clients,
     favorites: parsed.favorites,
     recent: parsed.recent,
+    trash: parsed.trash,
     businessProfile: parsed.businessProfile,
   };
 }
@@ -2113,15 +2632,50 @@ function mergeClientLists(localClients = [], remoteClients = []) {
 }
 
 function mergeCloudPayloads(localParsed, remoteParsed) {
-  const localTime = parseTimestamp(localParsed.dataUpdatedAt || localParsed.exportedAt);
-  const remoteTime = parseTimestamp(remoteParsed.dataUpdatedAt || remoteParsed.exportedAt);
-  const newest = remoteTime > localTime ? remoteParsed : localParsed;
+  const localTime = parseTimestamp(
+    localParsed.dataUpdatedAt || localParsed.exportedAt,
+  );
+
+  const remoteTime = parseTimestamp(
+    remoteParsed.dataUpdatedAt || remoteParsed.exportedAt,
+  );
+
+  const newest =
+    remoteTime > localTime
+      ? remoteParsed
+      : localParsed;
+
+  const trash = mergeTrashStates(
+    localParsed.trash,
+    remoteParsed.trash,
+  );
+
+  const mergedClients = mergeClientLists(
+    localParsed.clients,
+    remoteParsed.clients,
+  );
 
   return {
-    clients: mergeClientLists(localParsed.clients, remoteParsed.clients),
-    favorites: Array.from(new Set([...localParsed.favorites, ...remoteParsed.favorites])),
-    recent: Array.from(new Set([...localParsed.recent, ...remoteParsed.recent])).slice(0, 20),
-    businessProfile: normalizeBusinessProfile(newest.businessProfile),
+    clients: applyTrashActionsToClients(
+      mergedClients,
+      trash,
+    ),
+    favorites: Array.from(
+      new Set([
+        ...localParsed.favorites,
+        ...remoteParsed.favorites,
+      ]),
+    ),
+    recent: Array.from(
+      new Set([
+        ...localParsed.recent,
+        ...remoteParsed.recent,
+      ]),
+    ).slice(0, 20),
+    trash,
+    businessProfile: normalizeBusinessProfile(
+      newest.businessProfile,
+    ),
     appVersion: APP_META.version,
     exportedAt: new Date().toISOString(),
     dataUpdatedAt: new Date().toISOString(),
@@ -2340,7 +2894,16 @@ async function uploadCloudDatabase(options = {}) {
         return true;
       }
 
-      if (databaseIsSmaller(localStats, remoteStats) || databaseOmitsRecords(localParsed, remoteParsed)) {
+      if (
+        (
+          databaseIsSmaller(localStats, remoteStats) ||
+          databaseOmitsRecords(localParsed, remoteParsed)
+        ) &&
+        !databaseOmissionsCoveredByTrash(
+          localParsed,
+          remoteParsed,
+        )
+      ) {
         if (!manual) {
           setCloudSyncStatus('Удаление ждёт ручного подтверждения', 'warn');
           return false;
@@ -2433,7 +2996,16 @@ async function downloadCloudDatabase(options = {}) {
     return false;
   }
 
-  if (databaseIsSmaller(remoteStats, localStats) || databaseOmitsRecords(imported, localParsed)) {
+  if (
+    (
+      databaseIsSmaller(remoteStats, localStats) ||
+      databaseOmitsRecords(imported, localParsed)
+    ) &&
+    !databaseOmissionsCoveredByTrash(
+      imported,
+      localParsed,
+    )
+  ) {
     if (!manual) {
       setCloudSyncStatus('В облаке меньше данных — автозагрузка остановлена', 'warn');
       return false;
@@ -2703,6 +3275,7 @@ function createBackupPayload() {
       clients: state.clients,
       favorites: state.favorites,
       recent: state.recent,
+      trash: state.trash,
       businessProfile: state.businessProfile,
     },
   };
@@ -2778,12 +3351,14 @@ function parseBackupPayload(rawPayload) {
   const clients = normalizeImportedClients(rawPayload.data.clients);
   const favorites = toArray(rawPayload.data.favorites);
   const recent = toArray(rawPayload.data.recent);
+  const trash = normalizeTrash(rawPayload.data.trash);
   const businessProfile = normalizeBusinessProfile(rawPayload.data.businessProfile);
 
   return {
     clients,
     favorites,
     recent,
+    trash,
     businessProfile,
     appVersion: toText(rawPayload.appVersion, 'не указана'),
     exportedAt: toText(rawPayload.exportedAt),
@@ -2794,7 +3369,11 @@ function parseBackupPayload(rawPayload) {
 
 function applyImportedData(data, options = {}) {
   const { dataUpdatedAt = new Date().toISOString(), sync = true } = options;
-  state.clients = data.clients;
+  state.trash = normalizeTrash(data.trash);
+  state.clients = applyTrashActionsToClients(
+    data.clients,
+    state.trash,
+  );
   state.favorites = data.favorites.filter((id) => state.cards.some((card) => card.id === id));
   state.recent = data.recent.filter((id) => state.cards.some((card) => card.id === id));
   state.businessProfile = normalizeBusinessProfile(data.businessProfile);
@@ -2902,6 +3481,7 @@ function renderBackupInfo() {
   if (undoButton) {
     undoButton.classList.toggle('hidden', !readUndoImportBackup());
   }
+  renderTrashInfo();
   renderCloudSyncInfo();
 }
 
@@ -3812,14 +4392,43 @@ function saveClientFromForm(event) {
 }
 
 function deleteEditingClient() {
-  const client = state.clients.find((item) => item.id === state.editingClientId);
-  if (!client) return;
-  if (!window.confirm(`Удалить клиента «${client.name}»?`)) return;
+  const client = state.clients.find(
+    (item) => item.id === state.editingClientId,
+  );
 
-  state.clients = state.clients.filter((item) => item.id !== client.id);
+  if (!client) return;
+
+  if (
+    !window.confirm(
+      `Переместить клиента «${client.name}» в «Недавно удалённые»?\n\nВсе его работы сохранятся и смогут быть восстановлены.`,
+    )
+  ) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+
+  setTrashEntry({
+    kind: 'client',
+    entityId: client.id,
+    clientId: client.id,
+    clientName: client.name,
+    title: client.name,
+    status: 'trashed',
+    record: JSON.parse(JSON.stringify(client)),
+    deletedAt: now,
+    actionAt: now,
+    deviceId: getCloudDeviceId(),
+  });
+
+  state.clients = applyTrashActionsToClients(
+    state.clients,
+    state.trash,
+  );
+
   save();
   closeClientForm();
-  showToast('Клиент удалён');
+  showToast('Клиент перемещён в «Недавно удалённые»');
 }
 
 function currentEditingClient() {
@@ -5036,21 +5645,57 @@ function saveWorkFromForm(event) {
 }
 
 function deleteEditingWork() {
-  const clientIndex = state.clients.findIndex((client) => client.id === state.editingClientId);
-  if (clientIndex < 0) return;
-  const client = state.clients[clientIndex];
-  const work = (client.works || []).find((item) => item.id === state.editingWorkId);
-  if (!work) return;
-  if (!window.confirm(`Удалить запись «${work.title}»?`)) return;
+  const clientIndex = state.clients.findIndex(
+    (client) => client.id === state.editingClientId,
+  );
 
-  state.clients.splice(clientIndex, 1, {
-    ...client,
-    works: (client.works || []).filter((item) => item.id !== work.id),
-    updatedAt: new Date().toISOString(),
+  if (clientIndex < 0) return;
+
+  const client = state.clients[clientIndex];
+
+  const work = (client.works || []).find(
+    (item) => item.id === state.editingWorkId,
+  );
+
+  if (!work) return;
+
+  if (
+    !window.confirm(
+      `Переместить работу «${work.title}» в «Недавно удалённые»?`,
+    )
+  ) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+
+  setTrashEntry({
+    kind: 'work',
+    entityId: work.id,
+    clientId: client.id,
+    clientName: client.name,
+    title: work.title,
+    status: 'trashed',
+    record: JSON.parse(JSON.stringify(work)),
+    clientRecord: JSON.parse(
+      JSON.stringify({
+        ...client,
+        works: [],
+      }),
+    ),
+    deletedAt: now,
+    actionAt: now,
+    deviceId: getCloudDeviceId(),
   });
+
+  state.clients = applyTrashActionsToClients(
+    state.clients,
+    state.trash,
+  );
+
   save();
   closeWorkForm();
-  showToast('Запись удалена');
+  showToast('Работа перемещена в «Недавно удалённые»');
 }
 
 function createWorkId() {

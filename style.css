@@ -1570,3 +1570,158 @@ input[type="number"]{
 .header-sync-status.warn{color:#F0CC70}
 .header-sync-status.error{color:#FFAAA0}
 .header-sync-status.hidden{display:none!important}
+
+
+/* GORN v1.8.0 — Недавно удалённые */
+
+.trash-panel {
+  margin-top: 22px;
+  padding: 22px;
+  border: 1px solid rgba(212, 175, 55, 0.42);
+  border-radius: 20px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(34, 30, 22, 0.96),
+      rgba(22, 22, 25, 0.98)
+    );
+}
+
+.trash-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.trash-heading h3 {
+  margin: 0;
+  color: #e5c55c;
+}
+
+.trash-heading p {
+  margin: 7px 0 0;
+  color: #aaa59d;
+  line-height: 1.45;
+}
+
+.trash-stats {
+  margin: 18px 0 14px;
+  padding: 14px 16px;
+  color: #eee9df;
+  font-weight: 800;
+  background: #1d1d21;
+  border: 1px solid #3a393e;
+  border-radius: 14px;
+}
+
+.trash-list {
+  display: grid;
+  gap: 12px;
+}
+
+.trash-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: #1d1d21;
+  border: 1px solid #3c3b40;
+  border-radius: 16px;
+}
+
+.trash-card-copy {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.trash-card-copy strong {
+  overflow-wrap: anywhere;
+  color: #f2eee6;
+}
+
+.trash-card-copy small {
+  overflow-wrap: anywhere;
+  color: #aaa59d;
+  line-height: 1.4;
+}
+
+.trash-kind {
+  width: max-content;
+  padding: 4px 9px;
+  color: #e4c45d;
+  font-size: 12px;
+  font-weight: 800;
+  border: 1px solid rgba(212, 175, 55, 0.42);
+  border-radius: 999px;
+}
+
+.trash-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.trash-card-actions button {
+  min-height: 44px;
+  padding: 9px 13px;
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.trash-restore-btn {
+  color: #15130d;
+  background: linear-gradient(180deg, #efca52, #d8a82e);
+  border: 1px solid #d4af37;
+}
+
+.trash-purge-btn {
+  color: #ffaca5;
+  background: #26191a;
+  border: 1px solid #82423e;
+}
+
+.trash-empty {
+  padding: 22px;
+  color: #99958e;
+  text-align: center;
+  border: 1px dashed #454348;
+  border-radius: 14px;
+}
+
+.trash-empty.hidden {
+  display: none;
+}
+
+.trash-note {
+  margin: 16px 0 0;
+  color: #9f9a92;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  .trash-panel {
+    padding: 16px;
+    border-radius: 17px;
+  }
+
+  .trash-card {
+    grid-template-columns: 1fr;
+  }
+
+  .trash-card-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .trash-card-actions button {
+    width: 100%;
+    min-height: 50px;
+  }
+}
