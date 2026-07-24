@@ -3,7 +3,7 @@
   "name": "ГОРН MASTER SYSTEM",
   "short_name": "ГОРН",
   "description": "Профессиональный помощник печника ГОРН",
-  "start_url": "./index.html?v=1.7.1",
+  "start_url": "./index.html?v=1.7.2",
   "scope": "./",
   "display": "standalone",
   "background_color": "#0D0D0F",

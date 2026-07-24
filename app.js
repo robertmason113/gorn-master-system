@@ -1,5 +1,5 @@
 const APP_META = {
-  version: '1.7.1',
+  version: '1.7.2',
   status: 'Stable',
   updated: '24.07.2026',
 };
@@ -1704,6 +1704,16 @@ function databaseOmitsRecords(sourceData, targetData) {
     if ((targetClient.works || []).some((work) => !sourceWorkIds.has(work.id))) return true;
   }
   return false;
+}
+
+function escapeHtml(value = '') {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  }[character]));
 }
 
 function databaseMissingRecords(sourceData, targetData) {

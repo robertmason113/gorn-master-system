@@ -1,13 +1,13 @@
-const APP_VERSION = '1.7.1';
+const APP_VERSION = '1.7.2';
 const CACHE_NAME = `gorn-v${APP_VERSION}-stable`;
 const APP_SHELL = [
   './',
   './index.html',
-  './index.html?v=1.7.1',
-  './style.css?v=1.7.1',
-  './app.js?v=1.7.1',
-  './data/cards.json?v=1.7.1',
-  './manifest.webmanifest?v=1.7.1',
+  './index.html?v=1.7.2',
+  './style.css?v=1.7.2',
+  './app.js?v=1.7.2',
+  './data/cards.json?v=1.7.2',
+  './manifest.webmanifest?v=1.7.2',
   './apple-touch-icon.png',
   './icon-192.png',
   './icon-512.png',
@@ -98,7 +98,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.pathname.endsWith('/data/cards.json')) {
-    event.respondWith(networkFirst(request, './data/cards.json?v=1.7.1'));
+    event.respondWith(networkFirst(request, './data/cards.json?v=1.7.2'));
     return;
   }
 
