@@ -1,7 +1,7 @@
 const APP_META = {
-  version: '1.7.0',
+  version: '1.7.1',
   status: 'Stable',
-  updated: '21.07.2026',
+  updated: '24.07.2026',
 };
 
 const CLIENT_STATUSES = ['Новый', 'Связаться', 'Выезд назначен', 'В работе', 'Завершён', 'Отказ'];
@@ -1706,15 +1706,325 @@ function databaseOmitsRecords(sourceData, targetData) {
   return false;
 }
 
-function confirmReducedDatabase(direction, source, target) {
-  const answer = window.prompt(
-    `${direction} уменьшит количество данных.\n\n` +
-      `Источник: ${databaseStatsText(source)}.\n` +
-      `Сейчас: ${databaseStatsText(target)}.\n\n` +
-      'Для подтверждения введите слово ЗАМЕНИТЬ.',
-    '',
+function databaseMissingRecords(sourceData, targetData) {
+  const sourceClients = new Map(
+    (sourceData?.clients || []).map((client) => [toText(client.id), client]),
   );
-  return toText(answer).trim().toUpperCase() === 'ЗАМЕНИТЬ';
+  const clients = [];
+  const works = [];
+
+  for (const targetClient of targetData?.clients || []) {
+    const clientId = toText(targetClient.id);
+    const sourceClient = sourceClients.get(clientId);
+
+    if (!sourceClient) {
+      clients.push({
+        id: clientId,
+        name: toText(targetClient.name, 'Клиент без имени'),
+      });
+      continue;
+    }
+
+    const sourceWorkIds = new Set(
+      (sourceClient.works || []).map((work) => toText(work.id)),
+    );
+
+    for (const targetWork of targetClient.works || []) {
+      if (sourceWorkIds.has(toText(targetWork.id))) continue;
+
+      works.push({
+        id: toText(targetWork.id),
+        title: toText(targetWork.title, 'Работа без названия'),
+        clientName: toText(targetClient.name, 'Клиент без имени'),
+      });
+    }
+  }
+
+  return { clients, works };
+}
+
+function ensureCloudDecisionStyles() {
+  if (document.getElementById('gornCloudDecisionStyles')) return;
+
+  const style = document.createElement('style');
+  style.id = 'gornCloudDecisionStyles';
+  style.textContent = `
+    .gorn-cloud-decision-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 100000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(0, 0, 0, 0.78);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .gorn-cloud-decision {
+      width: min(680px, 100%);
+      max-height: 86vh;
+      overflow: auto;
+      box-sizing: border-box;
+      padding: 24px;
+      color: #f3efe5;
+      background: #17171b;
+      border: 1px solid rgba(212, 175, 55, 0.58);
+      border-radius: 22px;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.62);
+      font-family: Montserrat, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .gorn-cloud-decision h2 {
+      margin: 0 0 12px;
+      color: #e7c85c;
+      font-size: clamp(21px, 4vw, 29px);
+      line-height: 1.2;
+    }
+
+    .gorn-cloud-decision p {
+      margin: 0 0 16px;
+      color: #d4d0c8;
+      line-height: 1.55;
+    }
+
+    .gorn-cloud-decision-stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin: 16px 0;
+    }
+
+    .gorn-cloud-decision-stat {
+      padding: 12px;
+      background: #202025;
+      border: 1px solid #3b3a3f;
+      border-radius: 13px;
+      line-height: 1.45;
+    }
+
+    .gorn-cloud-decision-stat strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #e7c85c;
+    }
+
+    .gorn-cloud-decision-list {
+      max-height: 250px;
+      overflow: auto;
+      margin: 14px 0 20px;
+      padding: 8px;
+      background: #101013;
+      border: 1px solid #38373c;
+      border-radius: 14px;
+    }
+
+    .gorn-cloud-decision-item {
+      padding: 10px;
+      border-bottom: 1px solid #2f2e33;
+      line-height: 1.4;
+    }
+
+    .gorn-cloud-decision-item:last-child {
+      border-bottom: 0;
+    }
+
+    .gorn-cloud-decision-item strong {
+      color: #efcf66;
+    }
+
+    .gorn-cloud-decision-actions {
+      display: grid;
+      gap: 10px;
+    }
+
+    .gorn-cloud-decision button {
+      width: 100%;
+      min-height: 52px;
+      padding: 12px 16px;
+      border: 1px solid rgba(212, 175, 55, 0.55);
+      border-radius: 13px;
+      color: #f7f3e9;
+      background: #202025;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .gorn-cloud-decision button[data-decision="accept"] {
+      color: #111;
+      background: linear-gradient(180deg, #f0cb55, #d8a82e);
+    }
+
+    .gorn-cloud-decision button[data-decision="keep"] {
+      color: #f0d26b;
+    }
+
+    @media (max-width: 520px) {
+      .gorn-cloud-decision {
+        padding: 18px;
+        border-radius: 18px;
+      }
+
+      .gorn-cloud-decision-stats {
+        grid-template-columns: 1fr;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function showCloudDeletionDecision(options = {}) {
+  const {
+    title,
+    description,
+    sourceLabel,
+    sourceStats,
+    targetLabel,
+    targetStats,
+    missing,
+    acceptLabel,
+    keepLabel,
+  } = options;
+
+  ensureCloudDecisionStyles();
+
+  return new Promise((resolve) => {
+    document.getElementById('gornCloudDecisionBackdrop')?.remove();
+
+    const items = [
+      ...(missing.clients || []).map((client) => ({
+        type: 'Клиент',
+        text: client.name,
+      })),
+      ...(missing.works || []).map((work) => ({
+        type: 'Работа',
+        text: `${work.title} — ${work.clientName}`,
+      })),
+    ];
+
+    const displayedItems = items.slice(0, 20);
+    const hiddenCount = Math.max(0, items.length - displayedItems.length);
+
+    const listHtml = displayedItems.length
+      ? displayedItems
+          .map(
+            (item) => `
+              <div class="gorn-cloud-decision-item">
+                <strong>${escapeHtml(item.type)}:</strong>
+                ${escapeHtml(item.text)}
+              </div>`,
+          )
+          .join('')
+      : `
+          <div class="gorn-cloud-decision-item">
+            Изменилось количество записей. Проверьте итоговые значения.
+          </div>`;
+
+    const moreHtml = hiddenCount
+      ? `
+          <div class="gorn-cloud-decision-item">
+            И ещё записей: ${hiddenCount}
+          </div>`
+      : '';
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'gornCloudDecisionBackdrop';
+    backdrop.className = 'gorn-cloud-decision-backdrop';
+
+    backdrop.innerHTML = `
+      <div
+        class="gorn-cloud-decision"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="gornCloudDecisionTitle"
+      >
+        <h2 id="gornCloudDecisionTitle">${escapeHtml(title)}</h2>
+        <p>${escapeHtml(description)}</p>
+
+        <div class="gorn-cloud-decision-stats">
+          <div class="gorn-cloud-decision-stat">
+            <strong>${escapeHtml(sourceLabel)}</strong>
+            ${escapeHtml(databaseStatsText(sourceStats))}
+          </div>
+          <div class="gorn-cloud-decision-stat">
+            <strong>${escapeHtml(targetLabel)}</strong>
+            ${escapeHtml(databaseStatsText(targetStats))}
+          </div>
+        </div>
+
+        <div class="gorn-cloud-decision-list">
+          ${listHtml}
+          ${moreHtml}
+        </div>
+
+        <div class="gorn-cloud-decision-actions">
+          <button type="button" data-decision="accept">
+            ${escapeHtml(acceptLabel)}
+          </button>
+          <button type="button" data-decision="keep">
+            ${escapeHtml(keepLabel)}
+          </button>
+          <button type="button" data-decision="cancel">
+            Отмена
+          </button>
+        </div>
+      </div>
+    `;
+
+    const finish = (decision) => {
+      document.removeEventListener('keydown', handleKeydown);
+      backdrop.remove();
+      resolve(decision);
+    };
+
+    const handleKeydown = (event) => {
+      if (event.key === 'Escape') finish('cancel');
+    };
+
+    backdrop.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-decision]');
+      if (button) {
+        finish(button.dataset.decision || 'cancel');
+        return;
+      }
+
+      if (event.target === backdrop) finish('cancel');
+    });
+
+    document.addEventListener('keydown', handleKeydown);
+    document.body.appendChild(backdrop);
+
+    requestAnimationFrame(() => {
+      backdrop.querySelector('[data-decision="accept"]')?.focus();
+    });
+  });
+}
+
+async function requestReducedDatabaseDecision(direction, sourceData, targetData) {
+  const download = direction === 'download';
+  const missing = databaseMissingRecords(sourceData, targetData);
+
+  return showCloudDeletionDecision({
+    title: download
+      ? 'Принять удаления из облака?'
+      : 'Подтвердить удаления в облаке?',
+    description: download
+      ? 'В облачной базе отсутствуют перечисленные записи. После подтверждения они будут удалены с этого устройства.'
+      : 'На этом устройстве отсутствуют перечисленные записи. После подтверждения они будут удалены из облачной базы и затем с остальных устройств.',
+    sourceLabel: download ? 'В облаке' : 'На устройстве',
+    sourceStats: databaseStats(sourceData),
+    targetLabel: download ? 'На устройстве' : 'В облаке',
+    targetStats: databaseStats(targetData),
+    missing,
+    acceptLabel: download
+      ? 'Принять удаления из облака'
+      : 'Подтвердить удаления в облаке',
+    keepLabel: download
+      ? 'Оставить данные устройства'
+      : 'Оставить облачную базу',
+  });
 }
 
 function normalizedBackupData(parsed) {
@@ -1734,8 +2044,7 @@ async function localDataFingerprint(payload = createBackupPayload()) {
 async function rememberCloudSyncPoint(payload, fingerprint = '') {
   const parsed = payload?.data ? parseBackupPayload(payload) : payload;
   const resolvedFingerprint = fingerprint || (await localDataFingerprint(parsed));
-  const updatedAt = parsed.dataUpdatedAt || parsed.exportedAt || ensureDataUpdatedAt();
-  setCloudSyncPoint(updatedAt, resolvedFingerprint);
+  setCloudSyncPoint(new Date().toISOString(), resolvedFingerprint);
 }
 
 
@@ -1874,6 +2183,26 @@ function setCloudSyncStatus(message, tone = '', options = {}) {
   }
 }
 
+function formatLocalSyncDateTime(value, timeOnly = false) {
+  const date = new Date(toText(value));
+  if (Number.isNaN(date.getTime())) return '';
+
+  const options = timeOnly
+    ? {
+        hour: '2-digit',
+        minute: '2-digit',
+      }
+    : {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      };
+
+  return new Intl.DateTimeFormat('ru-RU', options).format(date);
+}
+
 function renderCloudSyncInfo() {
   const code = getCloudSyncCode();
   const input = $('#cloudSyncCodeInput');
@@ -1907,7 +2236,7 @@ function renderCloudSyncInfo() {
 
   let badgeText = 'Синхронизировано';
   let message = lastSync
-    ? `Последняя синхронизация: ${new Date(lastSync).toLocaleString('ru-RU')}`
+    ? `Последняя синхронизация: ${formatLocalSyncDateTime(lastSync)}`
     : 'Облачная база ещё не синхронизирована.';
   let tone = 'ok';
 
@@ -1935,7 +2264,14 @@ function renderCloudSyncInfo() {
     status.textContent = message;
     status.className = `cloud-sync-status ${tone}`.trim();
   }
-  updateHeaderCloudSyncStatus(`● ${badgeText}${lastSync && !pending && navigator.onLine ? ` • ${new Date(lastSync).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}` : ''}`, tone);
+  updateHeaderCloudSyncStatus(
+    `● ${badgeText}${
+      lastSync && !pending && navigator.onLine
+        ? ` • ${formatLocalSyncDateTime(lastSync, true)}`
+        : ''
+    }`,
+    tone,
+  );
 }
 
 function refreshCurrentViewAfterSync() {
@@ -1943,6 +2279,8 @@ function refreshCurrentViewAfterSync() {
     renderClients();
   } else if (state.mode === 'plan') {
     renderPlan();
+  } else if (state.mode === 'works') {
+    renderAllWorks();
   } else if (state.mode === 'about') {
     renderBackupInfo();
     runSystemDiagnostics();
@@ -1993,8 +2331,24 @@ async function uploadCloudDatabase(options = {}) {
       }
 
       if (databaseIsSmaller(localStats, remoteStats) || databaseOmitsRecords(localParsed, remoteParsed)) {
-        if (!manual || !confirmReducedDatabase('Отправка в облако', localStats, remoteStats)) {
-          setCloudSyncStatus('Отправка остановлена: на устройстве меньше данных', 'warn');
+        if (!manual) {
+          setCloudSyncStatus('Удаление ждёт ручного подтверждения', 'warn');
+          return false;
+        }
+
+        const decision = await requestReducedDatabaseDecision(
+          'upload',
+          localParsed,
+          remoteParsed,
+        );
+
+        if (decision !== 'accept') {
+          setCloudSyncStatus(
+            decision === 'keep'
+              ? 'Облачная база оставлена без изменений'
+              : 'Отправка в облако отменена',
+            decision === 'keep' ? 'ok' : 'warn',
+          );
           return false;
         }
       } else if (
@@ -2055,7 +2409,8 @@ async function downloadCloudDatabase(options = {}) {
   const remotePayload = await decryptCloudPayload(envelope, code);
   const imported = parseBackupPayload(remotePayload);
   const remoteStats = databaseStats(imported);
-  const localStats = databaseStats({ clients: state.clients });
+  const localParsed = parseBackupPayload(createBackupPayload());
+  const localStats = databaseStats(localParsed);
   const remoteFingerprint = await localDataFingerprint(imported);
 
   if (databaseIsEmpty(remoteStats) && !databaseIsEmpty(localStats)) {
@@ -2068,9 +2423,25 @@ async function downloadCloudDatabase(options = {}) {
     return false;
   }
 
-  if (databaseIsSmaller(remoteStats, localStats) || databaseOmitsRecords(imported, { clients: state.clients })) {
-    if (!manual || !confirmReducedDatabase('Загрузка из облака', remoteStats, localStats)) {
-      setCloudSyncStatus('Загрузка остановлена: в облаке меньше данных', 'warn');
+  if (databaseIsSmaller(remoteStats, localStats) || databaseOmitsRecords(imported, localParsed)) {
+    if (!manual) {
+      setCloudSyncStatus('В облаке меньше данных — автозагрузка остановлена', 'warn');
+      return false;
+    }
+
+    const decision = await requestReducedDatabaseDecision(
+      'download',
+      imported,
+      localParsed,
+    );
+
+    if (decision !== 'accept') {
+      setCloudSyncStatus(
+        decision === 'keep'
+          ? 'Данные устройства оставлены без изменений'
+          : 'Загрузка из облака отменена',
+        decision === 'keep' ? 'ok' : 'warn',
+      );
       return false;
     }
   } else if (manual && !skipConfirm) {
