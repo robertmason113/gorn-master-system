@@ -1,5 +1,5 @@
 const APP_META = {
-  version: '1.9.0',
+  version: '1.9.1',
   status: 'Stable',
   updated: '26.07.2026',
 };
@@ -3940,9 +3940,13 @@ function buildIcsEvent(entry, occurrenceDate = entry.work.date, dayIndex = 1, to
   lines.push(`DESCRIPTION:${escapeIcsText(calendarDescription(entry, { dayIndex, totalDays }))}`);
   lines.push('STATUS:CONFIRMED');
 
-  if (work.startTime && Number(work.reminderMinutes) > 0) {
+  if (Number(work.reminderMinutes) > 0) {
     lines.push('BEGIN:VALARM');
-    lines.push(`TRIGGER:-PT${Math.round(Number(work.reminderMinutes))}M`);
+    if (work.startTime) {
+      lines.push(`TRIGGER:-PT${Math.round(Number(work.reminderMinutes))}M`);
+    } else {
+      lines.push('TRIGGER:-P1D');
+    }
     lines.push('ACTION:DISPLAY');
     lines.push(`DESCRIPTION:${escapeIcsText(`Напоминание ГОРН: ${work.title}`)}`);
     lines.push('END:VALARM');
@@ -3970,7 +3974,54 @@ function buildIcsCalendar(entries, calendarName = 'План работ ГОРН'
   ].join('\r\n');
 }
 
-async function shareCalendarFile(content, filename, title) {
+const CALENDAR_IMPORT_ENDPOINT = '/.netlify/functions/gorn-calendar';
+let calendarTransferBusy = false;
+
+function isLocalDevelopmentHost() {
+  return ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+}
+
+function isAppleTouchDevice() {
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function setCalendarTransferBusy(isBusy) {
+  calendarTransferBusy = Boolean(isBusy);
+  document.body.classList.toggle('calendar-transfer-busy', calendarTransferBusy);
+}
+
+function appendCalendarFormField(form, name, value, useTextarea = false) {
+  const field = document.createElement(useTextarea ? 'textarea' : 'input');
+  field.name = name;
+  if (!useTextarea) field.type = 'hidden';
+  field.value = value;
+  form.appendChild(field);
+}
+
+function openSystemCalendarImport(content, filename, title) {
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = CALENDAR_IMPORT_ENDPOINT;
+  form.target = isAppleTouchDevice() ? '_self' : '_blank';
+  form.enctype = 'application/x-www-form-urlencoded';
+  form.acceptCharset = 'UTF-8';
+  form.style.display = 'none';
+
+  appendCalendarFormField(form, 'calendar', content, true);
+  appendCalendarFormField(form, 'filename', filename);
+  appendCalendarFormField(form, 'title', title);
+
+  document.body.appendChild(form);
+  form.submit();
+
+  if (!isAppleTouchDevice()) {
+    window.setTimeout(() => form.remove(), 1200);
+  }
+  return true;
+}
+
+async function shareCalendarFallback(content, filename, title) {
   const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
   const file = new File([blob], filename, { type: 'text/calendar' });
 
@@ -3981,7 +4032,7 @@ async function shareCalendarFile(content, filename, title) {
         text: 'Событие из ГОРН MASTER SYSTEM',
         files: [file],
       });
-      showToast('Календарь передан в меню отправки');
+      showToast('Файл календаря открыт в меню отправки', 2600);
       return;
     }
   } catch (error) {
@@ -3990,7 +4041,35 @@ async function shareCalendarFile(content, filename, title) {
   }
 
   downloadBlob(blob, filename);
-  showToast('Файл календаря сформирован');
+  showToast('Файл календаря сохранён', 2200);
+}
+
+async function shareCalendarFile(content, filename, title) {
+  if (calendarTransferBusy) {
+    showToast('Календарь уже подготавливается', 2200);
+    return;
+  }
+
+  setCalendarTransferBusy(true);
+  try {
+    const canOpenSystemImport = navigator.onLine && !isLocalDevelopmentHost();
+    if (canOpenSystemImport && openSystemCalendarImport(content, filename, title)) {
+      showToast(
+        isAppleTouchDevice()
+          ? 'Открылся календарь — нажмите «Добавить все»'
+          : 'Открылось системное окно импорта календаря',
+        3600,
+      );
+      return;
+    }
+
+    await shareCalendarFallback(content, filename, title);
+  } catch (error) {
+    console.error('GORN: не удалось открыть календарь', error);
+    await shareCalendarFallback(content, filename, title);
+  } finally {
+    window.setTimeout(() => setCalendarTransferBusy(false), 1200);
+  }
 }
 
 function findCalendarEntry(clientId, workId) {
@@ -4236,7 +4315,7 @@ function allWorkCard(entry) {
       </div>
       <div class="all-work-actions">
         ${phoneHref ? `<a class="client-call all-work-call" href="tel:${esc(phoneHref)}">Позвонить</a>` : ''}
-        <button class="calendar-action-btn" data-all-work-calendar-client-id="${esc(clientId)}" data-all-work-calendar-work-id="${esc(work.id)}" type="button">🗓 В календарь</button>
+        <button class="calendar-action-btn" data-all-work-calendar-client-id="${esc(clientId)}" data-all-work-calendar-work-id="${esc(work.id)}" type="button">🗓 Добавить в календарь</button>
         <button class="client-open-btn" data-all-work-open-client-id="${esc(clientId)}" data-all-work-open-work-id="${esc(work.id)}" type="button">Открыть работу</button>
       </div>
     </article>`;
@@ -4330,8 +4409,8 @@ function renderPlan() {
   if (exportPlanButton) {
     exportPlanButton.disabled = activeCalendarEntries.length === 0;
     exportPlanButton.textContent = activeCalendarEntries.length
-      ? `🗓 В календарь (${activeCalendarEntries.length})`
-      : '🗓 В календарь';
+      ? `🗓 Добавить план (${activeCalendarEntries.length})`
+      : '🗓 Добавить план';
   }
 
   renderPlanSection('Today', todayEntries, tokens.length > 0);
@@ -4412,7 +4491,7 @@ function planWorkCard(entry) {
       </div>
       <div class="plan-work-actions">
         ${phoneHref ? `<a class="client-call" href="tel:${esc(phoneHref)}">Позвонить</a>` : ''}
-        <button class="calendar-action-btn" data-plan-calendar-client-id="${esc(clientId)}" data-plan-calendar-work-id="${esc(work.id)}" type="button">🗓 В календарь</button>
+        <button class="calendar-action-btn" data-plan-calendar-client-id="${esc(clientId)}" data-plan-calendar-work-id="${esc(work.id)}" type="button">🗓 Добавить в календарь</button>
         <button class="client-open-btn" data-plan-client-id="${esc(clientId)}" data-plan-work-id="${esc(work.id)}" type="button">Открыть работу</button>
       </div>
     </article>`;
@@ -4746,7 +4825,7 @@ function workCard(work) {
       </div>
       ${work.notes ? `<div class="work-notes-preview">${esc(work.notes)}</div>` : ''}
       <div class="work-card-actions">
-        <button class="calendar-action-btn" data-work-calendar-id="${esc(work.id)}" type="button">🗓 В календарь</button>
+        <button class="calendar-action-btn" data-work-calendar-id="${esc(work.id)}" type="button">🗓 Добавить в календарь</button>
         <button class="work-open-btn" type="button">Открыть запись</button>
       </div>
     </article>`;
@@ -6732,7 +6811,7 @@ function openWorkForm(workId = null) {
   $('#workDate').value = work?.date || localDateISO();
   $('#workStartTime').value = work?.startTime || '';
   $('#workDurationMinutes').value = String(work?.durationMinutes || 180);
-  $('#workReminderMinutes').value = String(work ? work.reminderMinutes : 60);
+  $('#workReminderMinutes').value = String(work ? work.reminderMinutes : 1440);
   $('#workDaysCount').value = String(work?.daysCount || 1);
   $('#workSkipWeekends').checked = work ? work.skipWeekends !== false : true;
   $('#workAddress').value = work?.address || client.address || '';
@@ -7440,13 +7519,13 @@ async function copyText(id, button) {
 }
 
 let toastTimer;
-function showToast(message) {
+function showToast(message, duration = 1400) {
   const toast = $('#toast');
   if (!toast) return;
   toast.textContent = message;
   toast.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove('show'), 1400);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), duration);
 }
 
 function esc(value) {

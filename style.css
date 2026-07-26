@@ -2218,3 +2218,19 @@ body.estimate-catalog-open {
     grid-column: auto;
   }
 }
+
+
+/* v1.9.1 — быстрый системный импорт календаря */
+.calendar-transfer-busy .calendar-export-btn,
+.calendar-transfer-busy .calendar-action-btn{
+  opacity:.55;
+  pointer-events:none;
+  cursor:wait;
+}
+.calendar-import-note{
+  margin:6px 0 0;
+  color:#CFC8B9;
+  font-size:12px;
+  line-height:1.45;
+}
+.calendar-import-note strong{color:var(--gold2)}
