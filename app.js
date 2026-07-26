@@ -1,7 +1,7 @@
 const APP_META = {
-  version: '1.8.0',
+  version: '1.9.0',
   status: 'Stable',
-  updated: '25.07.2026',
+  updated: '26.07.2026',
 };
 
 const CLIENT_STATUSES = ['Новый', 'Связаться', 'Выезд назначен', 'В работе', 'Завершён', 'Отказ'];
@@ -16,6 +16,35 @@ const ESTIMATE_GROUPS = [
   { key: 'materials', label: 'Материалы' },
 ];
 const BUSINESS_PROFILE_STORAGE_KEY = 'gornBusinessProfile';
+
+const ESTIMATE_CATALOG_STORAGE_KEY = 'gornEstimateCatalog';
+
+const ESTIMATE_LOGISTICS_ITEMS = [
+  {
+    name: 'Транспортные расходы',
+    unit: 'выезд',
+  },
+  {
+    name: 'Разгрузка и подъём материалов',
+    unit: 'усл.',
+  },
+  {
+    name: 'Аренда оборудования',
+    unit: 'сут.',
+  },
+  {
+    name: 'Дополнительный выезд на объект',
+    unit: 'выезд',
+  },
+  {
+    name: 'Защита помещения перед работами',
+    unit: 'усл.',
+  },
+  {
+    name: 'Финальная уборка после работ',
+    unit: 'усл.',
+  },
+];
 const DEFAULT_BUSINESS_PROFILE = {
   companyName: 'ГОРН',
   masterName: 'Кирилл',
@@ -244,6 +273,13 @@ const state = {
   trash: readStoredTrash(),
   clients: readStoredClients(),
   businessProfile: readStoredBusinessProfile(),
+  estimateCatalog: readStoredEstimateCatalog(),
+  estimateCatalogView: {
+    group: 'labor',
+    query: '',
+    category: 'Все',
+    favoritesOnly: false,
+  },
 };
 
 state.clients = applyTrashActionsToClients(state.clients, state.trash);
@@ -306,6 +342,164 @@ function readStoredBusinessProfile() {
   }
 }
 
+
+
+function createEstimateCatalogItemId() {
+  if (globalThis.crypto?.randomUUID) {
+    return `CATALOG-${globalThis.crypto.randomUUID()}`;
+  }
+
+  return `CATALOG-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
+}
+
+function normalizeEstimateCatalogItem(rawItem, index = 0) {
+  const source =
+    rawItem && typeof rawItem === 'object'
+      ? rawItem
+      : {};
+
+  const group =
+    source.group === 'materials'
+      ? 'materials'
+      : 'labor';
+
+  const createdAt = toText(
+    source.createdAt,
+    new Date().toISOString(),
+  );
+
+  return {
+    id: toText(
+      source.id,
+      `CATALOG-${index + 1}`,
+    ),
+    group,
+    category: toText(
+      source.category,
+      'Мои позиции',
+    ),
+    name: toText(source.name || source.title),
+    unit: toText(
+      source.unit,
+      group === 'labor' ? 'усл.' : 'шт.',
+    ),
+    price: toText(source.price),
+    createdAt,
+    updatedAt: toText(
+      source.updatedAt,
+      createdAt,
+    ),
+  };
+}
+
+function normalizeEstimateCatalogState(rawCatalog) {
+  const source =
+    rawCatalog && typeof rawCatalog === 'object'
+      ? rawCatalog
+      : {};
+
+  const itemsById = new Map();
+
+  const rawItems = Array.isArray(source.customItems)
+    ? source.customItems
+    : [];
+
+  rawItems.forEach((rawItem, index) => {
+    const item = normalizeEstimateCatalogItem(
+      rawItem,
+      index,
+    );
+
+    if (!item.name) return;
+
+    const current = itemsById.get(item.id);
+
+    if (
+      !current ||
+      parseTimestamp(item.updatedAt) >=
+        parseTimestamp(current.updatedAt)
+    ) {
+      itemsById.set(item.id, item);
+    }
+  });
+
+  const prices = {};
+
+  if (
+    source.prices &&
+    typeof source.prices === 'object' &&
+    !Array.isArray(source.prices)
+  ) {
+    Object.entries(source.prices).forEach(
+      ([key, value]) => {
+        const cleanKey = toText(key);
+
+        if (!cleanKey) return;
+
+        prices[cleanKey] = toText(
+          value && typeof value === 'object'
+            ? value.value
+            : value,
+        );
+      },
+    );
+  }
+
+  return {
+    customItems: Array.from(itemsById.values()),
+    favorites: Array.from(
+      new Set(toArray(source.favorites)),
+    ),
+    prices,
+    updatedAt: toText(source.updatedAt),
+  };
+}
+
+function readStoredEstimateCatalog() {
+  try {
+    const raw = JSON.parse(
+      localStorage.getItem(
+        ESTIMATE_CATALOG_STORAGE_KEY,
+      ) || '{}',
+    );
+
+    return normalizeEstimateCatalogState(raw);
+  } catch (error) {
+    console.warn(
+      'GORN: каталог сметы был восстановлен',
+      error,
+    );
+
+    localStorage.removeItem(
+      ESTIMATE_CATALOG_STORAGE_KEY,
+    );
+
+    return normalizeEstimateCatalogState({});
+  }
+}
+
+function mergeEstimateCatalogStates(
+  localCatalog,
+  remoteCatalog,
+) {
+  const local = normalizeEstimateCatalogState(
+    localCatalog,
+  );
+
+  const remote = normalizeEstimateCatalogState(
+    remoteCatalog,
+  );
+
+  if (!local.updatedAt) return remote;
+  if (!remote.updatedAt) return local;
+
+  return parseTimestamp(remote.updatedAt) >
+    parseTimestamp(local.updatedAt)
+    ? remote
+    : local;
+}
 
 function trashTimestamp(value) {
   const timestamp = Date.parse(toText(value));
@@ -1484,6 +1678,21 @@ function bindEvents() {
   document.querySelectorAll('[data-estimate-preset-select]').forEach((select) => {
     select.addEventListener('change', () => updateEstimatePresetUnit(select.dataset.estimatePresetSelect));
   });
+
+  document
+    .querySelectorAll(
+      '[data-estimate-catalog-open]',
+    )
+    .forEach((button) => {
+      button.addEventListener(
+        'click',
+        () =>
+          openEstimateCatalog(
+            button.dataset
+              .estimateCatalogOpen,
+          ),
+      );
+    });
   document.querySelectorAll('[data-estimate-new-name]').forEach((input) => {
     input.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter') return;
@@ -1860,6 +2069,10 @@ function save(options = {}) {
     localStorage.setItem('gornClients', JSON.stringify(state.clients));
     localStorage.setItem(TRASH_STORAGE_KEY, JSON.stringify(state.trash));
     localStorage.setItem(BUSINESS_PROFILE_STORAGE_KEY, JSON.stringify(state.businessProfile));
+    localStorage.setItem(
+      ESTIMATE_CATALOG_STORAGE_KEY,
+      JSON.stringify(state.estimateCatalog),
+    );
 
     if (markChanged) {
       localStorage.setItem(CLOUD_SYNC_UPDATED_KEY, new Date().toISOString());
@@ -2562,6 +2775,7 @@ function normalizedBackupData(parsed) {
     recent: parsed.recent,
     trash: parsed.trash,
     businessProfile: parsed.businessProfile,
+    estimateCatalog: parsed.estimateCatalog,
   };
 }
 
@@ -2673,6 +2887,10 @@ function mergeCloudPayloads(localParsed, remoteParsed) {
       ]),
     ).slice(0, 20),
     trash,
+    estimateCatalog: mergeEstimateCatalogStates(
+      localParsed.estimateCatalog,
+      remoteParsed.estimateCatalog,
+    ),
     businessProfile: normalizeBusinessProfile(
       newest.businessProfile,
     ),
@@ -3277,6 +3495,7 @@ function createBackupPayload() {
       recent: state.recent,
       trash: state.trash,
       businessProfile: state.businessProfile,
+      estimateCatalog: state.estimateCatalog,
     },
   };
 }
@@ -3353,6 +3572,9 @@ function parseBackupPayload(rawPayload) {
   const recent = toArray(rawPayload.data.recent);
   const trash = normalizeTrash(rawPayload.data.trash);
   const businessProfile = normalizeBusinessProfile(rawPayload.data.businessProfile);
+  const estimateCatalog = normalizeEstimateCatalogState(
+    rawPayload.data.estimateCatalog,
+  );
 
   return {
     clients,
@@ -3360,6 +3582,7 @@ function parseBackupPayload(rawPayload) {
     recent,
     trash,
     businessProfile,
+    estimateCatalog,
     appVersion: toText(rawPayload.appVersion, 'не указана'),
     exportedAt: toText(rawPayload.exportedAt),
     dataUpdatedAt: toText(rawPayload.dataUpdatedAt || rawPayload.exportedAt),
@@ -3377,6 +3600,9 @@ function applyImportedData(data, options = {}) {
   state.favorites = data.favorites.filter((id) => state.cards.some((card) => card.id === id));
   state.recent = data.recent.filter((id) => state.cards.some((card) => card.id === id));
   state.businessProfile = normalizeBusinessProfile(data.businessProfile);
+  state.estimateCatalog = normalizeEstimateCatalogState(
+    data.estimateCatalog,
+  );
   state.clientSearch = '';
   state.planSearch = '';
   state.workSearch = '';
@@ -4993,66 +5219,1034 @@ function handleWorkEstimateClick(event) {
 }
 
 
-function catalogItems(group) {
-  return (ESTIMATE_CATALOGS[group] || []).flatMap((section) =>
-    section.items.map((item) => ({ ...item, category: section.category })),
-  );
+function estimateCatalogBaseKey(group, name) {
+  const slug =
+    normalizeSearchText(name)
+      .replace(/\s+/g, '-') ||
+    String(name || '').toLowerCase();
+
+  return `${group}:base:${slug}`;
 }
 
-function renderEstimateCatalogs() {
-  document.querySelectorAll('[data-estimate-preset-select]').forEach((select) => {
-    const group = select.dataset.estimatePresetSelect;
-    if (!group || select.dataset.ready === 'true') return;
-    const sections = ESTIMATE_CATALOGS[group] || [];
-    select.innerHTML = '<option value="">Быстрый выбор из списка…</option>' + sections
-      .map(
-        (section) => `<optgroup label="${esc(section.category)}">${section.items
-          .map(
-            (item) => `<option value="${esc(item.name)}" data-unit="${esc(item.unit)}">${esc(item.name)}</option>`,
-          )
-          .join('')}</optgroup>`,
-      )
-      .join('');
-    select.dataset.ready = 'true';
+function estimateCatalogCustomKey(item) {
+  return `${item.group}:custom:${item.id}`;
+}
+
+function estimateCatalogSections(group) {
+  const sections = (
+    ESTIMATE_CATALOGS[group] || []
+  ).map((section) => ({
+    category: section.category,
+    items: section.items.map((item) => ({
+      ...item,
+    })),
+  }));
+
+  if (group === 'labor') {
+    sections.push({
+      category:
+        'Логистика и дополнительные расходы',
+      items: ESTIMATE_LOGISTICS_ITEMS.map(
+        (item) => ({
+          ...item,
+        }),
+      ),
+    });
+  }
+
+  return sections;
+}
+
+function catalogItems(group) {
+  const catalog = normalizeEstimateCatalogState(
+    state.estimateCatalog,
+  );
+
+  const builtIn = estimateCatalogSections(group)
+    .flatMap((section) =>
+      section.items.map((item) => {
+        const key = estimateCatalogBaseKey(
+          group,
+          item.name,
+        );
+
+        return {
+          ...item,
+          key,
+          group,
+          category: section.category,
+          source: 'base',
+          price: toText(
+            catalog.prices[key],
+            toText(item.price),
+          ),
+          favorite:
+            catalog.favorites.includes(key),
+        };
+      }),
+    );
+
+  const custom = catalog.customItems
+    .filter((item) => item.group === group)
+    .map((item) => {
+      const key = estimateCatalogCustomKey(item);
+
+      return {
+        ...item,
+        key,
+        source: 'custom',
+        price: toText(
+          catalog.prices[key],
+          item.price,
+        ),
+        favorite:
+          catalog.favorites.includes(key),
+      };
+    });
+
+  return [...builtIn, ...custom];
+}
+
+function commitEstimateCatalog(options = {}) {
+  const {
+    renderDialog = true,
+  } = options;
+
+  state.estimateCatalog =
+    normalizeEstimateCatalogState({
+      ...state.estimateCatalog,
+      updatedAt: new Date().toISOString(),
+    });
+
+  save();
+  renderEstimateCatalogs();
+
+  if (
+    renderDialog &&
+    !$('#estimateCatalogBackdrop')
+      ?.classList.contains('hidden')
+  ) {
+    renderEstimateCatalogDialog();
+  }
+}
+
+function rememberEstimateCatalogPrice(
+  key,
+  value,
+  options = {},
+) {
+  const { renderDialog = true } = options;
+
+  const catalog = normalizeEstimateCatalogState(
+    state.estimateCatalog,
+  );
+
+  catalog.prices[key] = toText(value);
+  state.estimateCatalog = catalog;
+
+  commitEstimateCatalog({
+    renderDialog,
   });
 }
 
+function toggleEstimateCatalogFavorite(key) {
+  const catalog = normalizeEstimateCatalogState(
+    state.estimateCatalog,
+  );
+
+  catalog.favorites = catalog.favorites.includes(
+    key,
+  )
+    ? catalog.favorites.filter(
+        (item) => item !== key,
+      )
+    : [...catalog.favorites, key];
+
+  state.estimateCatalog = catalog;
+  commitEstimateCatalog();
+}
+
+function renderEstimateCatalogs() {
+  document
+    .querySelectorAll(
+      '[data-estimate-preset-select]',
+    )
+    .forEach((select) => {
+      const group =
+        select.dataset.estimatePresetSelect;
+
+      if (!group) return;
+
+      const selectedKey = select.value;
+      const items = catalogItems(group);
+      const sections = new Map();
+
+      items.forEach((item) => {
+        if (!sections.has(item.category)) {
+          sections.set(item.category, []);
+        }
+
+        sections.get(item.category).push(item);
+      });
+
+      select.innerHTML =
+        '<option value="">Быстрый выбор из списка…</option>' +
+        Array.from(sections.entries())
+          .map(
+            ([category, sectionItems]) =>
+              `<optgroup label="${esc(
+                category,
+              )}">${sectionItems
+                .map(
+                  (item) =>
+                    `<option
+                      value="${esc(item.key)}"
+                      data-name="${esc(item.name)}"
+                      data-unit="${esc(item.unit)}"
+                      data-price="${esc(item.price)}"
+                    >${item.favorite ? '★ ' : ''}${esc(
+                      item.name,
+                    )}</option>`,
+                )
+                .join('')}</optgroup>`,
+          )
+          .join('');
+
+      if (
+        items.some(
+          (item) => item.key === selectedKey,
+        )
+      ) {
+        select.value = selectedKey;
+      }
+    });
+}
+
 function updateEstimatePresetUnit(group) {
-  const select = $(`[data-estimate-preset-select="${group}"]`);
-  const unitInput = $(`[data-estimate-preset-unit="${group}"]`);
-  const unit = select?.selectedOptions?.[0]?.dataset?.unit || (group === 'labor' ? 'усл.' : 'шт.');
+  const select = $(
+    `[data-estimate-preset-select="${group}"]`,
+  );
+
+  const unitInput = $(
+    `[data-estimate-preset-unit="${group}"]`,
+  );
+
+  const priceInput = $(
+    `[data-estimate-preset-price="${group}"]`,
+  );
+
+  const option =
+    select?.selectedOptions?.[0];
+
+  const unit =
+    option?.dataset?.unit ||
+    (group === 'labor' ? 'усл.' : 'шт.');
+
   if (unitInput) unitInput.value = unit;
+
+  if (priceInput) {
+    priceInput.value =
+      option?.dataset?.price || '';
+  }
 }
 
 function addEstimatePresetItem(group) {
-  if (!ESTIMATE_GROUPS.some((item) => item.key === group)) return;
-  if (!state.workEstimateDraft) state.workEstimateDraft = normalizeWorkEstimate(createDefaultWorkEstimate());
+  if (
+    !ESTIMATE_GROUPS.some(
+      (item) => item.key === group,
+    )
+  ) {
+    return;
+  }
 
-  const select = $(`[data-estimate-preset-select="${group}"]`);
-  const quantityInput = $(`[data-estimate-preset-quantity="${group}"]`);
-  const unitInput = $(`[data-estimate-preset-unit="${group}"]`);
-  const priceInput = $(`[data-estimate-preset-price="${group}"]`);
-  const name = toText(select?.value);
-  if (!name) {
+  if (!state.workEstimateDraft) {
+    state.workEstimateDraft =
+      normalizeWorkEstimate(
+        createDefaultWorkEstimate(),
+      );
+  }
+
+  const select = $(
+    `[data-estimate-preset-select="${group}"]`,
+  );
+
+  const quantityInput = $(
+    `[data-estimate-preset-quantity="${group}"]`,
+  );
+
+  const unitInput = $(
+    `[data-estimate-preset-unit="${group}"]`,
+  );
+
+  const priceInput = $(
+    `[data-estimate-preset-price="${group}"]`,
+  );
+
+  const option =
+    select?.selectedOptions?.[0];
+
+  const key = toText(option?.value);
+  const name = toText(option?.dataset?.name);
+
+  if (!key || !name) {
     select?.focus();
     showToast('Выберите позицию из списка');
     return;
   }
 
+  const price = toText(priceInput?.value);
+
   state.workEstimateDraft[group].push({
     id: createEstimateItemId(group),
     name,
-    quantity: toText(quantityInput?.value, '1'),
-    unit: toText(unitInput?.value, group === 'labor' ? 'усл.' : 'шт.'),
-    price: toText(priceInput?.value),
+    quantity: toText(
+      quantityInput?.value,
+      '1',
+    ),
+    unit: toText(
+      unitInput?.value,
+      group === 'labor' ? 'усл.' : 'шт.',
+    ),
+    price,
   });
+
+  rememberEstimateCatalogPrice(
+    key,
+    price,
+    {
+      renderDialog: false,
+    },
+  );
 
   if (select) select.value = '';
   if (quantityInput) quantityInput.value = '1';
-  if (unitInput) unitInput.value = group === 'labor' ? 'усл.' : 'шт.';
+
+  if (unitInput) {
+    unitInput.value =
+      group === 'labor' ? 'усл.' : 'шт.';
+  }
+
   if (priceInput) priceInput.value = '';
+
   renderWorkEstimateDraft();
   select?.focus();
+}
+
+function ensureEstimateCatalogDialog() {
+  let backdrop = $(
+    '#estimateCatalogBackdrop',
+  );
+
+  if (backdrop) return backdrop;
+
+  document.body.insertAdjacentHTML(
+    'beforeend',
+    `
+      <div
+        id="estimateCatalogBackdrop"
+        class="estimate-catalog-backdrop hidden"
+      >
+        <section
+          class="estimate-catalog-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="estimateCatalogTitle"
+        >
+          <header class="estimate-catalog-header">
+            <div>
+              <h3 id="estimateCatalogTitle">
+                Каталог сметы
+              </h3>
+              <p id="estimateCatalogSubtitle">
+                Поиск и быстрый выбор
+              </p>
+            </div>
+
+            <button
+              data-estimate-catalog-close
+              type="button"
+              aria-label="Закрыть каталог"
+            >
+              ✕
+            </button>
+          </header>
+
+          <div class="estimate-catalog-toolbar">
+            <input
+              id="estimateCatalogSearch"
+              type="search"
+              placeholder="Найти позицию…"
+              autocomplete="off"
+            >
+
+            <button
+              id="estimateCatalogFavoritesBtn"
+              type="button"
+            >
+              ☆ Избранное
+            </button>
+          </div>
+
+          <div
+            id="estimateCatalogCategories"
+            class="estimate-catalog-categories"
+          ></div>
+
+          <div
+            id="estimateCatalogList"
+            class="estimate-catalog-list"
+          ></div>
+
+          <form
+            id="estimateCatalogCustomForm"
+            class="estimate-catalog-custom"
+          >
+            <div class="estimate-catalog-custom-heading">
+              <strong>Своя позиция</strong>
+              <span>
+                Сохранится на всех устройствах
+              </span>
+            </div>
+
+            <div class="estimate-catalog-custom-grid">
+              <input
+                id="estimateCatalogCustomCategory"
+                type="text"
+                maxlength="80"
+                placeholder="Категория"
+                value="Мои позиции"
+              >
+
+              <input
+                id="estimateCatalogCustomName"
+                type="text"
+                maxlength="180"
+                placeholder="Наименование"
+                required
+              >
+
+              <input
+                id="estimateCatalogCustomUnit"
+                type="text"
+                maxlength="20"
+                placeholder="Ед."
+              >
+
+              <input
+                id="estimateCatalogCustomPrice"
+                type="text"
+                inputmode="decimal"
+                maxlength="40"
+                placeholder="Цена"
+              >
+
+              <button type="submit">
+                + Добавить в каталог
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    `,
+  );
+
+  backdrop = $('#estimateCatalogBackdrop');
+
+  $('#estimateCatalogSearch')
+    ?.addEventListener('input', (event) => {
+      state.estimateCatalogView.query =
+        event.target.value;
+
+      renderEstimateCatalogDialog();
+    });
+
+  $('#estimateCatalogCustomForm')
+    ?.addEventListener('submit', (event) => {
+      event.preventDefault();
+      addCustomEstimateCatalogItem();
+    });
+
+  backdrop?.addEventListener(
+    'change',
+    (event) => {
+      const priceInput = event.target.closest(
+        '[data-estimate-catalog-price]',
+      );
+
+      if (!priceInput) return;
+
+      rememberEstimateCatalogPrice(
+        priceInput.dataset
+          .estimateCatalogPrice,
+        priceInput.value,
+      );
+
+      showToast('Стандартная цена сохранена');
+    },
+  );
+
+  backdrop?.addEventListener(
+    'click',
+    (event) => {
+      if (
+        event.target === backdrop ||
+        event.target.closest(
+          '[data-estimate-catalog-close]',
+        )
+      ) {
+        closeEstimateCatalog();
+        return;
+      }
+
+      const categoryButton =
+        event.target.closest(
+          '[data-estimate-catalog-category]',
+        );
+
+      if (categoryButton) {
+        state.estimateCatalogView.category =
+          categoryButton.dataset
+            .estimateCatalogCategory ||
+          'Все';
+
+        renderEstimateCatalogDialog();
+        return;
+      }
+
+      if (
+        event.target.closest(
+          '#estimateCatalogFavoritesBtn',
+        )
+      ) {
+        state.estimateCatalogView
+          .favoritesOnly =
+          !state.estimateCatalogView
+            .favoritesOnly;
+
+        renderEstimateCatalogDialog();
+        return;
+      }
+
+      const favoriteButton =
+        event.target.closest(
+          '[data-estimate-catalog-favorite]',
+        );
+
+      if (favoriteButton) {
+        toggleEstimateCatalogFavorite(
+          favoriteButton.dataset
+            .estimateCatalogFavorite,
+        );
+        return;
+      }
+
+      const addButton =
+        event.target.closest(
+          '[data-estimate-catalog-add]',
+        );
+
+      if (addButton) {
+        addEstimateCatalogItemFromDialog(
+          addButton,
+        );
+        return;
+      }
+
+      const deleteButton =
+        event.target.closest(
+          '[data-estimate-catalog-delete]',
+        );
+
+      if (deleteButton) {
+        deleteCustomEstimateCatalogItem(
+          deleteButton.dataset
+            .estimateCatalogDelete,
+        );
+      }
+    },
+  );
+
+  document.addEventListener(
+    'keydown',
+    (event) => {
+      if (
+        event.key === 'Escape' &&
+        !$('#estimateCatalogBackdrop')
+          ?.classList.contains('hidden')
+      ) {
+        closeEstimateCatalog();
+      }
+    },
+  );
+
+  return backdrop;
+}
+
+function openEstimateCatalog(group) {
+  if (
+    !ESTIMATE_GROUPS.some(
+      (item) => item.key === group,
+    )
+  ) {
+    return;
+  }
+
+  ensureEstimateCatalogDialog();
+
+  state.estimateCatalogView = {
+    group,
+    query: '',
+    category: 'Все',
+    favoritesOnly: false,
+  };
+
+  const search = $('#estimateCatalogSearch');
+
+  if (search) search.value = '';
+
+  $('#estimateCatalogBackdrop')
+    ?.classList.remove('hidden');
+
+  document.body.classList.add(
+    'estimate-catalog-open',
+  );
+
+  renderEstimateCatalogDialog();
+
+  requestAnimationFrame(() => {
+    $('#estimateCatalogSearch')?.focus();
+  });
+}
+
+function closeEstimateCatalog() {
+  $('#estimateCatalogBackdrop')
+    ?.classList.add('hidden');
+
+  document.body.classList.remove(
+    'estimate-catalog-open',
+  );
+}
+
+function renderEstimateCatalogDialog() {
+  const view = state.estimateCatalogView;
+  const group = view.group;
+  const allItems = catalogItems(group);
+
+  const title =
+    group === 'labor'
+      ? 'Каталог работ'
+      : 'Каталог материалов';
+
+  const subtitle =
+    group === 'labor'
+      ? 'Работы, логистика и собственные позиции'
+      : 'Материалы, категории и сохранённые цены';
+
+  const titleElement = $(
+    '#estimateCatalogTitle',
+  );
+
+  const subtitleElement = $(
+    '#estimateCatalogSubtitle',
+  );
+
+  if (titleElement) {
+    titleElement.textContent = title;
+  }
+
+  if (subtitleElement) {
+    subtitleElement.textContent = subtitle;
+  }
+
+  const customUnit = $(
+    '#estimateCatalogCustomUnit',
+  );
+
+  if (
+    customUnit &&
+    document.activeElement !== customUnit &&
+    !customUnit.value
+  ) {
+    customUnit.value =
+      group === 'labor' ? 'усл.' : 'шт.';
+  }
+
+  const categories = [
+    'Все',
+    ...new Set(
+      allItems.map((item) => item.category),
+    ),
+  ];
+
+  if (
+    view.category !== 'Все' &&
+    !categories.includes(view.category)
+  ) {
+    view.category = 'Все';
+  }
+
+  const categoryWrap = $(
+    '#estimateCatalogCategories',
+  );
+
+  if (categoryWrap) {
+    categoryWrap.innerHTML = categories
+      .map(
+        (category) =>
+          `<button
+            class="${
+              category === view.category
+                ? 'active'
+                : ''
+            }"
+            data-estimate-catalog-category="${esc(
+              category,
+            )}"
+            type="button"
+          >${esc(category)}</button>`,
+      )
+      .join('');
+  }
+
+  const favoritesButton = $(
+    '#estimateCatalogFavoritesBtn',
+  );
+
+  if (favoritesButton) {
+    favoritesButton.classList.toggle(
+      'active',
+      view.favoritesOnly,
+    );
+
+    favoritesButton.textContent =
+      view.favoritesOnly
+        ? '★ Только избранное'
+        : '☆ Избранное';
+  }
+
+  const query = normalizeSearchText(view.query);
+
+  const filteredItems = allItems
+    .filter((item) => {
+      if (
+        view.category !== 'Все' &&
+        item.category !== view.category
+      ) {
+        return false;
+      }
+
+      if (
+        view.favoritesOnly &&
+        !item.favorite
+      ) {
+        return false;
+      }
+
+      if (!query) return true;
+
+      return normalizeSearchText(
+        [
+          item.name,
+          item.category,
+          item.unit,
+        ].join(' '),
+      ).includes(query);
+    })
+    .sort(
+      (a, b) =>
+        Number(b.favorite) -
+          Number(a.favorite) ||
+        a.category.localeCompare(
+          b.category,
+          'ru',
+        ) ||
+        a.name.localeCompare(b.name, 'ru'),
+    );
+
+  const list = $('#estimateCatalogList');
+
+  if (!list) return;
+
+  if (!filteredItems.length) {
+    list.innerHTML = `
+      <div class="estimate-catalog-empty">
+        Ничего не найдено
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML = filteredItems
+    .map(
+      (item) => `
+        <article
+          class="estimate-catalog-item"
+          data-catalog-key="${esc(item.key)}"
+        >
+          <div class="estimate-catalog-item-main">
+            <div class="estimate-catalog-item-copy">
+              <strong>${esc(item.name)}</strong>
+              <small>
+                ${esc(item.category)}
+                · ${esc(item.unit)}
+                ${
+                  item.source === 'custom'
+                    ? ' · Своя позиция'
+                    : ''
+                }
+              </small>
+            </div>
+
+            <button
+              class="estimate-catalog-star ${
+                item.favorite ? 'active' : ''
+              }"
+              data-estimate-catalog-favorite="${esc(
+                item.key,
+              )}"
+              type="button"
+              aria-label="Избранное"
+            >
+              ${item.favorite ? '★' : '☆'}
+            </button>
+          </div>
+
+          <div class="estimate-catalog-item-controls">
+            <label>
+              <span>Количество</span>
+              <input
+                data-estimate-catalog-quantity
+                type="text"
+                inputmode="decimal"
+                maxlength="20"
+                value="1"
+              >
+            </label>
+
+            <label>
+              <span>Стандартная цена</span>
+              <input
+                data-estimate-catalog-price="${esc(
+                  item.key,
+                )}"
+                type="text"
+                inputmode="decimal"
+                maxlength="40"
+                value="${esc(item.price)}"
+                placeholder="Цена"
+              >
+            </label>
+
+            <button
+              data-estimate-catalog-add="${esc(
+                item.key,
+              )}"
+              type="button"
+            >
+              + В смету
+            </button>
+          </div>
+
+          ${
+            item.source === 'custom'
+              ? `
+                <button
+                  class="estimate-catalog-delete"
+                  data-estimate-catalog-delete="${esc(
+                    item.id,
+                  )}"
+                  type="button"
+                >
+                  Удалить свою позицию
+                </button>
+              `
+              : ''
+          }
+        </article>
+      `,
+    )
+    .join('');
+}
+
+function addEstimateCatalogItemFromDialog(
+  button,
+) {
+  const group =
+    state.estimateCatalogView.group;
+
+  const key =
+    button.dataset.estimateCatalogAdd;
+
+  const item = catalogItems(group).find(
+    (entry) => entry.key === key,
+  );
+
+  if (!item) {
+    showToast('Позиция не найдена');
+    return;
+  }
+
+  if (!state.workEstimateDraft) {
+    state.workEstimateDraft =
+      normalizeWorkEstimate(
+        createDefaultWorkEstimate(),
+      );
+  }
+
+  const row = button.closest(
+    '.estimate-catalog-item',
+  );
+
+  const quantity = toText(
+    row?.querySelector(
+      '[data-estimate-catalog-quantity]',
+    )?.value,
+    '1',
+  );
+
+  const price = toText(
+    row?.querySelector(
+      '[data-estimate-catalog-price]',
+    )?.value,
+  );
+
+  state.workEstimateDraft[group].push({
+    id: createEstimateItemId(group),
+    name: item.name,
+    quantity,
+    unit: item.unit,
+    price,
+  });
+
+  rememberEstimateCatalogPrice(
+    key,
+    price,
+    {
+      renderDialog: false,
+    },
+  );
+
+  renderWorkEstimateDraft();
+  renderEstimateCatalogDialog();
+
+  showToast('Позиция добавлена в смету');
+}
+
+function addCustomEstimateCatalogItem() {
+  const group =
+    state.estimateCatalogView.group;
+
+  const category = toText(
+    $('#estimateCatalogCustomCategory')
+      ?.value,
+    'Мои позиции',
+  );
+
+  const name = toText(
+    $('#estimateCatalogCustomName')?.value,
+  );
+
+  const unit = toText(
+    $('#estimateCatalogCustomUnit')?.value,
+    group === 'labor' ? 'усл.' : 'шт.',
+  );
+
+  const price = toText(
+    $('#estimateCatalogCustomPrice')?.value,
+  );
+
+  if (!name) {
+    $('#estimateCatalogCustomName')?.focus();
+    showToast('Укажите наименование');
+    return;
+  }
+
+  const now = new Date().toISOString();
+
+  const item = normalizeEstimateCatalogItem(
+    {
+      id: createEstimateCatalogItemId(),
+      group,
+      category,
+      name,
+      unit,
+      price,
+      createdAt: now,
+      updatedAt: now,
+    },
+    state.estimateCatalog.customItems.length,
+  );
+
+  const catalog = normalizeEstimateCatalogState(
+    state.estimateCatalog,
+  );
+
+  catalog.customItems.push(item);
+
+  const key = estimateCatalogCustomKey(item);
+
+  if (price) {
+    catalog.prices[key] = price;
+  }
+
+  state.estimateCatalog = catalog;
+
+  const nameInput = $(
+    '#estimateCatalogCustomName',
+  );
+
+  const priceInput = $(
+    '#estimateCatalogCustomPrice',
+  );
+
+  if (nameInput) nameInput.value = '';
+  if (priceInput) priceInput.value = '';
+
+  commitEstimateCatalog();
+  showToast('Позиция сохранена в каталоге');
+
+  nameInput?.focus();
+}
+
+function deleteCustomEstimateCatalogItem(
+  itemId,
+) {
+  const catalog = normalizeEstimateCatalogState(
+    state.estimateCatalog,
+  );
+
+  const item = catalog.customItems.find(
+    (entry) => entry.id === itemId,
+  );
+
+  if (!item) return;
+
+  if (
+    !window.confirm(
+      `Удалить из каталога?\n\n${item.name}`,
+    )
+  ) {
+    return;
+  }
+
+  const key = estimateCatalogCustomKey(item);
+
+  catalog.customItems =
+    catalog.customItems.filter(
+      (entry) => entry.id !== itemId,
+    );
+
+  catalog.favorites =
+    catalog.favorites.filter(
+      (entry) => entry !== key,
+    );
+
+  delete catalog.prices[key];
+
+  state.estimateCatalog = catalog;
+
+  commitEstimateCatalog();
+  showToast('Позиция удалена из каталога');
 }
 
 function renderEstimateDocumentFields() {
